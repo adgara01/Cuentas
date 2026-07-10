@@ -1,0 +1,14 @@
+{
+  "name": "Cuentas",
+  "short_name": "Cuentas",
+  "start_url": "/Cuentas/",
+  "scope": "/Cuentas/",
+  "display": "standalone",
+  "background_color": "#F3F4F6",
+  "theme_color": "#16A673",
+  "icons": [
+    { "src": "icon-180.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
