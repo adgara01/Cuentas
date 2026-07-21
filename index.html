@@ -210,7 +210,8 @@
   .ft-box.out .ft-val{color:var(--red);}
 
   .chart-wrap{background:var(--cell);border-radius:20px;padding:14px 8px 10px;overflow-x:auto;box-shadow:var(--shadow);}
-  .chart-wrap svg{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
+  .chart-wrap svg,.chart-wrap svg *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
+  .chart-wrap svg text{pointer-events:none;}
   .chart-title{font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--muted);font-weight:700;margin-bottom:10px;padding:0 4px;}
   .chart-bars{display:flex;align-items:flex-end;gap:7px;min-height:70px;padding:0 2px;}
   .chart-bar-item{display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:36px;}
@@ -1379,7 +1380,7 @@
     return `<div class="chart-wrap" style="margin-top:12px;">
       <div class="chart-title">Evolución del ahorro — ${accRem.name} <span style="font-weight:400;text-transform:none;letter-spacing:0;">(toca o arrastra)</span></div>
       <div style="overflow-x:auto;position:relative;" id="savingsScrollWrap">
-        <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;touch-action:pan-x;" id="savingsSvg">
+        <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;" id="savingsSvg">
           ${ticks.map(t=>{
             const y = yScale(t).toFixed(1);
             return `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="var(--line)" stroke-width="1"/>
@@ -1442,10 +1443,11 @@
     svg.onpointermove = e=> showAt(e.clientX);
     svg.onpointerdown = e=> showAt(e.clientX);
     svg.onpointerleave = hide;
-    svg.ontouchstart = e=>{ if(e.touches[0]){ e.preventDefault(); showAt(e.touches[0].clientX); } };
-    svg.ontouchmove = e=>{ if(e.touches[0]){ e.preventDefault(); showAt(e.touches[0].clientX); } };
+    svg.addEventListener('touchstart', e=>{ if(e.touches[0]){ e.preventDefault(); showAt(e.touches[0].clientX); } }, {passive:false});
+    svg.addEventListener('touchmove', e=>{ if(e.touches[0]){ e.preventDefault(); showAt(e.touches[0].clientX); } }, {passive:false});
     svg.ontouchend = hide;
     svg.oncontextmenu = e=> e.preventDefault();
+    svg.addEventListener('selectstart', e=> e.preventDefault());
   }
 
   function renderAjustes(){
