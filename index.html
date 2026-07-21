@@ -240,6 +240,12 @@
   .day-chart-lbl{font-size:7.5px;color:var(--muted);margin-top:5px;font-weight:600;}
   .day-chart-legend{display:flex;gap:16px;margin-top:14px;padding:0 4px;font-size:11.5px;color:var(--ink-soft);font-weight:600;}
   .day-chart-legend span{display:flex;align-items:center;gap:6px;}
+  .chart-tooltip{
+    position:absolute;top:6px;transform:translateX(-50%);background:var(--ink);color:#fff;
+    font-size:11px;line-height:1.5;padding:6px 10px;border-radius:9px;pointer-events:none;
+    white-space:nowrap;z-index:5;box-shadow:0 4px 12px rgba(0,0,0,0.18);
+  }
+  .chart-tooltip b{font-weight:700;}
   .chart-legend-item{cursor:pointer;padding:3px 8px 3px 3px;border-radius:999px;background:var(--bg);}
   .chart-legend-item:active{background:var(--line);}
   .legend-dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex-shrink:0;}
@@ -761,8 +767,8 @@
     const data = months.map(m=> Object.fromEntries(groups.map(g=>[g, sumFn(m,g)])));
     const totals = data.map(d=>groups.reduce((s,g)=>s+d[g],0));
     const maxTotal = Math.max(...totals,1);
-    const barW = 24, gap=26, H=160, padB=28;
-    const usableH = H-padB-8;
+    const barW = 24, gap=26, H=176, padT=20, padB=28;
+    const usableH = H-padB-padT;
     const W = Math.max(320, months.length*(barW+gap));
     function barsFor(i){
       let yCursor = H-padB;
@@ -776,6 +782,10 @@
           yCursor = y;
         }
       });
+      if(totals[i]>0){
+        const topY = (H-padB) - (totals[i]/maxTotal)*usableH;
+        segs += `<text x="${(i*(barW+gap)+gap/2+barW/2).toFixed(1)}" y="${Math.max(10,topY-6).toFixed(1)}" font-size="8.5" fill="var(--ink-soft)" text-anchor="middle" font-weight="700">${fmt(totals[i])}€</text>`;
+      }
       return segs;
     }
     return `<div class="chart-wrap" style="margin-top:12px;">
@@ -865,6 +875,7 @@
         showCategoryInfoSheet(group, cats);
       };
     });
+    wireSavingsChartInteractivity();
 
     $app.querySelectorAll('.ac-val-input').forEach(inp=>{
       inp.onchange = async (e)=>{
@@ -1324,19 +1335,27 @@
     showToast('Excel descargado');
   }
 
+  let lastSavingsChart = null;
+  function niceAxisTicks(minV, maxV, count){
+    const span = maxV - minV || 1;
+    const step = span / (count-1);
+    const ticks = [];
+    for(let i=0;i<count;i++) ticks.push(minV + step*i);
+    return ticks;
+  }
   function buildSavingsEvolutionChart(months){
     const accRem = state.accounts.find(a=>a.id==='remunerada') || state.accounts.find(a=>a.type==='ahorro' && !a.manual);
-    if(!accRem || !months.length) return '';
+    if(!accRem || !months.length){ lastSavingsChart = null; return ''; }
     let cum = accRem.initial;
     const planned = months.map(m=>{ cum += goalAmountForMonth(m); return cum; });
     const todayM = todayMonthKey();
     const real = months.map(m=> m<=todayM ? ledgerBalance(accRem.id, m) : null);
     const allVals = planned.concat(real.filter(v=>v!=null));
-    if(!allVals.length) return '';
+    if(!allVals.length){ lastSavingsChart = null; return ''; }
     const minV = Math.min(0, Math.min(...allVals));
     const maxV = Math.max(...allVals, 1);
     const W = Math.max(320, months.length*48);
-    const H = 160, padL=10, padR=10, padT=14, padB=28;
+    const H = 190, padL=46, padR=14, padT=14, padB=28;
     const xStep = (W-padL-padR) / Math.max(1, months.length-1);
     const yScale = v => H-padB - ( (v-minV)/((maxV-minV)||1) ) * (H-padT-padB);
     const xPos = i => padL + i*xStep;
@@ -1352,22 +1371,78 @@
     }
     const plannedPath = pathFor(planned);
     const realPath = pathFor(real);
-    const zeroY = yScale(0);
+    const ticks = niceAxisTicks(minV, maxV, 4);
+
+    lastSavingsChart = { months, planned, real, minV, maxV, W, H, padL, padR, padT, padB, xStep, accRem };
+
     return `<div class="chart-wrap" style="margin-top:12px;">
-      <div class="chart-title">Evolución del ahorro — ${accRem.name}</div>
-      <div style="overflow-x:auto;">
-        <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;">
-          <line x1="${padL}" y1="${zeroY.toFixed(1)}" x2="${W-padR}" y2="${zeroY.toFixed(1)}" stroke="var(--line)" stroke-width="1"/>
+      <div class="chart-title">Evolución del ahorro — ${accRem.name} <span style="font-weight:400;text-transform:none;letter-spacing:0;">(toca o arrastra)</span></div>
+      <div style="overflow-x:auto;position:relative;" id="savingsScrollWrap">
+        <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;touch-action:pan-x;" id="savingsSvg">
+          ${ticks.map(t=>{
+            const y = yScale(t).toFixed(1);
+            return `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="var(--line)" stroke-width="1"/>
+                    <text x="${padL-6}" y="${(+y+3)}" font-size="8.5" fill="var(--muted)" text-anchor="end">${fmt(t)}€</text>`;
+          }).join('')}
           <path d="${plannedPath}" fill="none" stroke="var(--amber)" stroke-width="2" stroke-dasharray="5,4"/>
           <path d="${realPath}" fill="none" stroke="var(--green)" stroke-width="2.5"/>
           ${months.map((m,i)=>`<text x="${xPos(i).toFixed(1)}" y="${H-8}" font-size="9" fill="var(--muted)" text-anchor="middle">${monthLabel(m)}</text>`).join('')}
+          <line id="savingsVLine" x1="0" y1="${padT}" x2="0" y2="${H-padB}" stroke="var(--ink-soft)" stroke-width="1" style="opacity:0;"/>
+          <circle id="savingsDotP" r="4" fill="var(--amber)" stroke="#fff" stroke-width="1.5" style="opacity:0;"/>
+          <circle id="savingsDotR" r="4" fill="var(--green)" stroke="#fff" stroke-width="1.5" style="opacity:0;"/>
         </svg>
+        <div class="chart-tooltip" id="savingsTooltip" style="display:none;"></div>
       </div>
       <div class="day-chart-legend" style="margin-top:10px;">
         <span><i class="legend-dot" style="background:var(--green);border-radius:2px;"></i>Real</span>
         <span><i class="legend-dot" style="background:var(--amber);border-radius:2px;"></i>Previsto</span>
       </div>
     </div>`;
+  }
+  function wireSavingsChartInteractivity(){
+    const d = lastSavingsChart;
+    const svg = document.getElementById('savingsSvg');
+    if(!d || !svg) return;
+    const tooltip = document.getElementById('savingsTooltip');
+    const vline = document.getElementById('savingsVLine');
+    const dotP = document.getElementById('savingsDotP');
+    const dotR = document.getElementById('savingsDotR');
+    const yScale = v => d.H-d.padB - ( (v-d.minV)/((d.maxV-d.minV)||1) ) * (d.H-d.padT-d.padB);
+    const xPos = i => d.padL + i*d.xStep;
+
+    function showAt(clientX){
+      const rect = svg.getBoundingClientRect();
+      const scale = rect.width / d.W; // por si el navegador escala el svg
+      const x = (clientX - rect.left) / scale;
+      let idx = Math.round((x - d.padL) / d.xStep);
+      idx = Math.max(0, Math.min(d.months.length-1, idx));
+      const px = xPos(idx);
+      vline.setAttribute('x1', px); vline.setAttribute('x2', px);
+      vline.style.opacity = 1;
+      let html = `<b>${monthLabel(d.months[idx])}</b>`;
+      if(d.real[idx]!=null){
+        dotR.setAttribute('cx', px); dotR.setAttribute('cy', yScale(d.real[idx]));
+        dotR.style.opacity = 1;
+        html += `<br>Real: ${fmt(d.real[idx])}€`;
+      } else {
+        dotR.style.opacity = 0;
+      }
+      dotP.setAttribute('cx', px); dotP.setAttribute('cy', yScale(d.planned[idx]));
+      dotP.style.opacity = 1;
+      html += `<br>Previsto: ${fmt(d.planned[idx])}€`;
+      tooltip.innerHTML = html;
+      tooltip.style.display = 'block';
+      tooltip.style.left = px+'px';
+    }
+    function hide(){
+      vline.style.opacity = 0; dotP.style.opacity = 0; dotR.style.opacity = 0;
+      tooltip.style.display = 'none';
+    }
+    svg.onpointermove = e=> showAt(e.clientX);
+    svg.onpointerdown = e=> showAt(e.clientX);
+    svg.onpointerleave = hide;
+    svg.ontouchmove = e=>{ if(e.touches[0]) showAt(e.touches[0].clientX); };
+    svg.ontouchend = hide;
   }
 
   function renderAjustes(){
@@ -1508,10 +1583,29 @@
     if(syncOnBtn) syncOnBtn.onclick = async ()=>{
       const code = document.getElementById('newSyncCode').value.trim();
       if(!code){ showToast('Escribe un código'); return; }
-      state.syncCode = code;
-      await saveState();
-      showToast('Sincronización activada');
-      const result = await syncWithCloud(code);
+      showToast('Comprobando código…');
+      let remote = null;
+      try{ remote = await pullFromCloud(code); }catch(e){ /* sin conexión, tratamos como si no hubiera remoto */ }
+      if(remote && remote.data){
+        const useRemote = confirm('Ya hay datos guardados con ese código en la nube.\n\nAceptar = usar esos datos (sustituye lo que tienes en este dispositivo).\nCancelar = subir lo de este dispositivo (sustituye lo que hay en la nube).');
+        if(useRemote){
+          state = Object.assign(JSON.parse(JSON.stringify(DEFAULT_STATE)), remote.data);
+          state.syncCode = code;
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+          syncStatus = 'synced';
+          showToast('Datos de la nube cargados');
+        } else {
+          state.syncCode = code;
+          await saveState();
+          await pushToCloud();
+          showToast('Tus datos subidos a la nube');
+        }
+      } else {
+        state.syncCode = code;
+        await saveState();
+        await pushToCloud();
+        showToast('Sincronización activada');
+      }
       renderAjustes();
     };
     const syncNowBtn = document.getElementById('syncNowBtn');
