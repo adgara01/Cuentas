@@ -395,7 +395,9 @@
     goals: { monthlySavingsPct: 0 },
     paydayDay: 1,
     monthlyPlans: {},
-    exportEmail: ''
+    exportEmail: '',
+    syncCode: '',
+    _updatedAt: 0
   };
 
   let state = JSON.parse(JSON.stringify(DEFAULT_STATE));
@@ -418,9 +420,16 @@
   const accName = id => { const a = state.accounts.find(x=>x.id===id); return a ? a.name : id; };
 
   const STORAGE_KEY = 'cuentas-data-v1';
+  const SUPABASE_URL = 'https://aysogafvoexxoosvahdj.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF5c29nYWZ2b2V4eG9vc3ZhaGRqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ2MjQwNDMsImV4cCI6MjEwMDIwMDA0M30.wccYP_Ejm_fpRJosCNKGMyOnnj0_xhOkRzcLImkzn28';
+  let syncStatus = 'idle'; // idle | syncing | synced | error | offline
+  let syncTimer = null;
+
   async function saveState(){
+    state._updatedAt = Date.now();
     try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
     catch(e){ console.error('storage save failed', e); showToast('No se pudo guardar'); }
+    scheduleCloudPush();
   }
   async function loadState(){
     try{
@@ -431,9 +440,88 @@
         if(!state.goals || state.goals.monthlySavingsPct===undefined) state.goals = { monthlySavingsPct: 0 };
         if(!state.paydayDay) state.paydayDay = 1;
         if(!state.monthlyPlans) state.monthlyPlans = {};
+        if(state.syncCode===undefined) state.syncCode = '';
+        if(!state._updatedAt) state._updatedAt = 0;
         state.accounts.forEach(a=>{ if(a.manualBalance===undefined) a.manualBalance = 0; if(a.manual===undefined) a.manual=false; });
       }
     }catch(e){ /* first run */ }
+  }
+
+  function scheduleCloudPush(){
+    if(!state.syncCode) return;
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(pushToCloud, 700); // agrupa cambios rápidos seguidos en una sola subida
+  }
+  async function pushToCloud(){
+    if(!state.syncCode) return;
+    syncStatus = 'syncing';
+    try{
+      const res = await fetch(SUPABASE_URL+'/rest/v1/cuentas_sync?on_conflict=sync_code', {
+        method:'POST',
+        headers:{
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization':'Bearer '+SUPABASE_ANON_KEY,
+          'Content-Type':'application/json',
+          'Prefer':'resolution=merge-duplicates,return=minimal'
+        },
+        body: JSON.stringify({ sync_code: state.syncCode, data: state, updated_at: new Date(state._updatedAt).toISOString() })
+      });
+      syncStatus = res.ok ? 'synced' : 'error';
+    }catch(e){
+      console.error('cloud push failed', e);
+      syncStatus = 'offline';
+    }
+    if(activeTab==='ajustes') renderSyncStatusOnly();
+  }
+  async function pullFromCloud(code){
+    const res = await fetch(SUPABASE_URL+'/rest/v1/cuentas_sync?sync_code=eq.'+encodeURIComponent(code)+'&select=data,updated_at', {
+      headers:{ 'apikey': SUPABASE_ANON_KEY, 'Authorization':'Bearer '+SUPABASE_ANON_KEY }
+    });
+    if(!res.ok) throw new Error('pull failed');
+    const arr = await res.json();
+    return arr && arr[0] ? arr[0] : null;
+  }
+  async function syncWithCloud(code, opts){
+    opts = opts || {};
+    syncStatus = 'syncing';
+    try{
+      const remote = await pullFromCloud(code);
+      if(remote){
+        const remoteTime = new Date(remote.updated_at).getTime();
+        const localTime = state._updatedAt || 0;
+        if(remote.data && (remoteTime > localTime || opts.forcePull)){
+          const keepCode = code;
+          state = Object.assign(JSON.parse(JSON.stringify(DEFAULT_STATE)), remote.data);
+          state.syncCode = keepCode;
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+          syncStatus = 'synced';
+          return 'pulled';
+        } else if(localTime > remoteTime){
+          await pushToCloud();
+          return 'pushed';
+        }
+        syncStatus = 'synced';
+        return 'same';
+      } else {
+        await pushToCloud();
+        return 'pushed';
+      }
+    }catch(e){
+      console.error('sync failed', e);
+      syncStatus = 'offline';
+      return 'error';
+    }
+  }
+  function renderSyncStatusOnly(){
+    const el = document.getElementById('syncStatusText');
+    if(el) el.innerHTML = syncStatusLabel();
+  }
+  function syncStatusLabel(){
+    if(!state.syncCode) return '<span style="color:var(--muted);">Sin código — los datos solo viven en este dispositivo.</span>';
+    if(syncStatus==='syncing') return '<span style="color:var(--muted);">Sincronizando…</span>';
+    if(syncStatus==='synced') return '<span style="color:var(--green);">✓ Sincronizado con la nube</span>';
+    if(syncStatus==='offline'||syncStatus==='error') return '<span style="color:var(--red);">Sin conexión — se sincronizará cuando vuelva internet</span>';
+    return '<span style="color:var(--muted);">Sin sincronizar todavía</span>';
   }
 
   function showToast(msg){
@@ -574,9 +662,14 @@
     $app.innerHTML = `
       <div class="onboard-wrap">
         <h1>Antes de empezar</h1>
-        <p>Dime cuánto hay ahora mismo en cada cuenta. Será el punto de partida — a partir de aquí todo se calcula solo con lo que vayas registrando.</p>
+        <div class="cell" style="margin-bottom:22px;">
+          <div class="section-title" style="margin-bottom:10px;">¿Ya usas Cuentas en otro dispositivo?</div>
+          <div class="field"><label>Código de sincronización</label><input type="text" id="obSyncCode" placeholder="tu código"></div>
+          <button class="btn-ghost" id="obRestore" style="margin-top:2px;">Restaurar desde la nube</button>
+        </div>
+        <p>O, si es la primera vez, dime cuánto hay ahora mismo en cada cuenta. Será el punto de partida — a partir de aquí todo se calcula solo con lo que vayas registrando.</p>
         <div id="obList"></div>
-        <button class="btn-primary" id="obStart">Empezar</button>
+        <button class="btn-primary" id="obStart">Empezar de cero</button>
       </div>
     `;
     const $list = document.getElementById('obList');
@@ -589,6 +682,27 @@
       `;
       $list.appendChild(row);
     });
+    document.getElementById('obRestore').onclick = async ()=>{
+      const code = document.getElementById('obSyncCode').value.trim();
+      if(!code){ showToast('Escribe tu código'); return; }
+      showToast('Buscando en la nube…');
+      try{
+        const remote = await pullFromCloud(code);
+        if(remote && remote.data){
+          state = Object.assign(JSON.parse(JSON.stringify(DEFAULT_STATE)), remote.data);
+          state.syncCode = code;
+          state.onboarded = true;
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+          $tabbarWrap.style.display = 'flex';
+          showToast('Datos restaurados');
+          render();
+        } else {
+          showToast('No hay datos con ese código todavía');
+        }
+      }catch(e){
+        showToast('Sin conexión, inténtalo de nuevo');
+      }
+    };
     document.getElementById('obStart').onclick = async ()=>{
       $list.querySelectorAll('input').forEach(inp=>{
         const acc = state.accounts.find(a=>a.id===inp.dataset.acc);
@@ -1365,6 +1479,23 @@
     </div>`;
 
     html += `<div class="cell">
+      <div class="section-title">Sincronización en la nube</div>
+      ${state.syncCode ? `
+        <div class="exp-row" style="border-top:none;padding-top:0;">
+          <div class="exp-name">Código activo</div>
+          <div class="mono" style="font-weight:700;">${state.syncCode}</div>
+        </div>
+        <div id="syncStatusText" style="font-size:12px;margin:8px 0 12px;">${syncStatusLabel()}</div>
+        <button class="btn-ghost" id="syncNowBtn">Sincronizar ahora</button>
+        <button class="btn-secondary" id="syncOffBtn">Desactivar sincronización</button>
+      ` : `
+        <div class="empty-note" style="padding:0 0 12px;text-align:left;">Crea un código para poder ver y editar estos mismos datos desde el ordenador u otro dispositivo, abriendo la misma app con ese código.</div>
+        <div class="field"><label>Código de sincronización</label><input type="text" id="newSyncCode" placeholder="ej. adri-cuentas-2026"></div>
+        <button class="btn-primary" id="syncOnBtn">Activar sincronización</button>
+      `}
+    </div>`;
+
+    html += `<div class="cell">
       <div class="section-title">Exportar a Excel</div>
       <div class="field"><label>Correo para enviarlo</label><input type="email" id="exportEmail" value="${state.exportEmail||''}" placeholder="tucorreo@ejemplo.com"></div>
       <button class="btn-primary" id="exportBtn">Descargar y preparar correo</button>
@@ -1372,6 +1503,31 @@
     </div>`;
 
     $app.innerHTML = html;
+
+    const syncOnBtn = document.getElementById('syncOnBtn');
+    if(syncOnBtn) syncOnBtn.onclick = async ()=>{
+      const code = document.getElementById('newSyncCode').value.trim();
+      if(!code){ showToast('Escribe un código'); return; }
+      state.syncCode = code;
+      await saveState();
+      showToast('Sincronización activada');
+      const result = await syncWithCloud(code);
+      renderAjustes();
+    };
+    const syncNowBtn = document.getElementById('syncNowBtn');
+    if(syncNowBtn) syncNowBtn.onclick = async ()=>{
+      showToast('Sincronizando…');
+      await syncWithCloud(state.syncCode);
+      showToast(syncStatus==='synced' ? 'Sincronizado' : 'Sin conexión');
+      renderAjustes();
+    };
+    const syncOffBtn = document.getElementById('syncOffBtn');
+    if(syncOffBtn) syncOffBtn.onclick = async ()=>{
+      if(!confirm('¿Desactivar sincronización? Este dispositivo dejará de subir y bajar cambios de la nube (tus datos seguirán aquí en local).')) return;
+      state.syncCode = '';
+      await saveState();
+      renderAjustes();
+    };
 
     document.getElementById('paydayInput').onchange = e=>{
       let v = parseInt(e.target.value,10)||1;
@@ -1539,6 +1695,9 @@
 
   (async function init(){
     await loadState();
+    if(state.syncCode){
+      await syncWithCloud(state.syncCode);
+    }
     render();
   })();
 })();
