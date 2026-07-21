@@ -210,6 +210,7 @@
   .ft-box.out .ft-val{color:var(--red);}
 
   .chart-wrap{background:var(--cell);border-radius:20px;padding:14px 8px 10px;overflow-x:auto;box-shadow:var(--shadow);}
+  .chart-wrap svg{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
   .chart-title{font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--muted);font-weight:700;margin-bottom:10px;padding:0 4px;}
   .chart-bars{display:flex;align-items:flex-end;gap:7px;min-height:70px;padding:0 2px;}
   .chart-bar-item{display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:36px;}
@@ -1441,8 +1442,10 @@
     svg.onpointermove = e=> showAt(e.clientX);
     svg.onpointerdown = e=> showAt(e.clientX);
     svg.onpointerleave = hide;
-    svg.ontouchmove = e=>{ if(e.touches[0]) showAt(e.touches[0].clientX); };
+    svg.ontouchstart = e=>{ if(e.touches[0]){ e.preventDefault(); showAt(e.touches[0].clientX); } };
+    svg.ontouchmove = e=>{ if(e.touches[0]){ e.preventDefault(); showAt(e.touches[0].clientX); } };
     svg.ontouchend = hide;
+    svg.oncontextmenu = e=> e.preventDefault();
   }
 
   function renderAjustes(){
