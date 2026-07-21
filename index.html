@@ -27,6 +27,8 @@
     --red-bg:#FCEAE8;
     --amber:#CC9A1E;
     --amber-bg:#FBF3D9;
+    --cat-violet:#7C6FE0;
+    --cat-blue:#3B82C4;
     --shadow:0 1px 2px rgba(20,20,25,0.04), 0 4px 14px rgba(20,20,25,0.05);
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;min-width:0;}
@@ -56,6 +58,15 @@
   .battery-bar-bg::after{content:'';position:absolute;right:-5px;top:3px;width:4px;height:8px;background:var(--bg);border-radius:0 3px 3px 0;}
   .battery-bar-fill{height:100%;border-radius:7px;}
   .battery-sub{font-size:10.5px;color:var(--ink-soft);margin-top:10px;line-height:1.4;}
+  .battery-extra-note{font-size:9.5px;color:var(--muted);margin-top:6px;line-height:1.3;}
+  .check-row{display:flex;align-items:center;gap:9px;padding:9px 2px 6px;cursor:pointer;}
+  .check-row input[type="checkbox"]{width:18px;height:18px;flex-shrink:0;margin-top:1px;accent-color:var(--green);}
+  .check-row span{font-size:13px;color:var(--ink-soft);font-weight:600;line-height:1.35;}
+  .check-row-sub{display:block;font-size:11px;color:var(--muted);font-weight:400;margin-top:1px;}
+  .extra-tag{
+    font-size:9px;color:var(--amber);background:var(--amber-bg);font-weight:800;
+    text-transform:uppercase;letter-spacing:0.3px;padding:2px 6px;border-radius:999px;vertical-align:middle;
+  }
 
   .filters-toggle{display:flex;justify-content:space-between;align-items:center;cursor:pointer;}
   .filters-toggle .chev{color:var(--muted);font-size:13px;transition:transform .2s;}
@@ -229,6 +240,8 @@
   .day-chart-lbl{font-size:7.5px;color:var(--muted);margin-top:5px;font-weight:600;}
   .day-chart-legend{display:flex;gap:16px;margin-top:14px;padding:0 4px;font-size:11.5px;color:var(--ink-soft);font-weight:600;}
   .day-chart-legend span{display:flex;align-items:center;gap:6px;}
+  .chart-legend-item{cursor:pointer;padding:3px 8px 3px 3px;border-radius:999px;background:var(--bg);}
+  .chart-legend-item:active{background:var(--line);}
   .legend-dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex-shrink:0;}
 
   .day-group{margin-bottom:10px;}
@@ -606,6 +619,84 @@
   }
 
   // ================= RESUMEN =================
+  const OCIO_GROUP_CATS = ['Ocio','Restaurante/Bar','Subscripciones','Compras'];
+  function categoryGroupFor(cat){
+    if(cat==='Vacaciones') return 'Vacaciones';
+    if(cat==='Adri Cova') return 'Adri Cova';
+    if(OCIO_GROUP_CATS.includes(cat)) return 'Ocio';
+    return 'Otros';
+  }
+  function otrosCategories(){
+    return state.categories.filter(c=>!['Vacaciones','Adri Cova',...OCIO_GROUP_CATS].includes(c));
+  }
+  function ocioCategories(){
+    return state.categories.filter(c=>OCIO_GROUP_CATS.includes(c));
+  }
+  function showCategoryInfoSheet(title, categories){
+    $sheet.innerHTML = `
+      <h2>${title} <span class="close-x" id="closeX">✕</span></h2>
+      <div class="chip-row">${categories.length ? categories.map(c=>`<div class="chip active" style="cursor:default;">${c}</div>`).join('') : '<div class="empty-note">Sin categorías.</div>'}</div>
+    `;
+    $overlay.classList.add('show');
+    document.getElementById('closeX').onclick = ()=> $overlay.classList.remove('show');
+  }
+  function buildStackedChart(opts){
+    // opts: {chartId, title, months, groups(order bottom->top), colors, sumFn(month,group), infoFn(group)->categories[]}
+    const { chartId, title, months, groups, colors, sumFn, infoFn } = opts;
+    if(!months.length) return '';
+    const data = months.map(m=> Object.fromEntries(groups.map(g=>[g, sumFn(m,g)])));
+    const totals = data.map(d=>groups.reduce((s,g)=>s+d[g],0));
+    const maxTotal = Math.max(...totals,1);
+    const barW = 24, gap=26, H=160, padB=28;
+    const usableH = H-padB-8;
+    const W = Math.max(320, months.length*(barW+gap));
+    function barsFor(i){
+      let yCursor = H-padB;
+      let segs = '';
+      groups.forEach(g=>{
+        const v = data[i][g];
+        const h = (v/maxTotal)*usableH;
+        if(h>0.4){
+          const y = yCursor - h;
+          segs += `<rect x="${(i*(barW+gap)+gap/2).toFixed(1)}" y="${y.toFixed(1)}" width="${barW}" height="${h.toFixed(1)}" fill="${colors[g]}" rx="3"/>`;
+          yCursor = y;
+        }
+      });
+      return segs;
+    }
+    return `<div class="chart-wrap" style="margin-top:12px;">
+      <div class="chart-title">${title}</div>
+      <div style="overflow-x:auto;">
+        <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;">
+          ${months.map((m,i)=>barsFor(i)).join('')}
+          ${months.map((m,i)=>`<text x="${(i*(barW+gap)+gap/2+barW/2).toFixed(1)}" y="${H-8}" font-size="9" fill="var(--muted)" text-anchor="middle">${monthLabel(m)}</text>`).join('')}
+        </svg>
+      </div>
+      <div class="day-chart-legend" style="margin-top:10px;flex-wrap:wrap;row-gap:6px;">
+        ${groups.slice().reverse().map(g=>`<span class="chart-legend-item" data-chart="${chartId}" data-group="${g}"><i class="legend-dot" style="background:${colors[g]};border-radius:2px;"></i>${g}</span>`).join('')}
+      </div>
+    </div>`;
+  }
+  function buildCategoryGroupChart(months){
+    const groups = ['Otros','Adri Cova','Vacaciones','Ocio'];
+    const colors = { Otros:'var(--muted)', 'Adri Cova':'var(--amber)', Vacaciones:'var(--cat-blue)', Ocio:'var(--cat-violet)' };
+    return buildStackedChart({
+      chartId:'gastos', title:'Gastos por grupo — evolución', months, groups, colors,
+      sumFn: (m,g)=> state.transactions.filter(t=>t.type==='Gasto' && monthKey(t.date)===m && categoryGroupFor(t.category)===g).reduce((s,t)=>s+t.amount,0),
+      infoFn: g=> g==='Otros' ? otrosCategories() : (g==='Ocio' ? ocioCategories() : [g])
+    });
+  }
+  function buildIncomeCategoryChart(months){
+    const groups = state.incomeCategories.slice();
+    const palette = ['var(--green)','var(--cat-violet)','var(--cat-blue)','var(--amber)','var(--muted)'];
+    const colors = Object.fromEntries(groups.map((g,i)=>[g, palette[i%palette.length]]));
+    return buildStackedChart({
+      chartId:'ingresos', title:'Ingresos por categoría — evolución', months, groups, colors,
+      sumFn: (m,g)=> state.transactions.filter(t=>t.type==='Ingreso' && monthKey(t.date)===m && t.category===g).reduce((s,t)=>s+t.amount,0),
+      infoFn: g=> [g]
+    });
+  }
+
   function renderResumen(){
     const corrientes = state.accounts.filter(a=>a.type==='corriente');
     const ahorros = state.accounts.filter(a=>a.type==='ahorro');
@@ -626,6 +717,13 @@
       </div>`;
     }
 
+    const txMonths = allMonths();
+    const rollingEnd = (()=>{ let m = todayMonthKey(); for(let i=0;i<11;i++) m = nextMonthKey(m); return m; })();
+    const rangeStart = txMonths.length ? txMonths[0] : todayMonthKey();
+    const contiguous = [];
+    { let cur = rangeStart; let guard=0; while(cur<=rollingEnd && guard<240){ contiguous.push(cur); cur = nextMonthKey(cur); guard++; } }
+    const planMonths = Array.from(new Set([...contiguous, ...txMonths, ...Object.keys(state.monthlyPlans)])).sort();
+
     $app.innerHTML = `
       ${headerHtml()}
       <div class="cell total-cell">
@@ -636,7 +734,23 @@
       <div class="acc-grid">${corrientes.map(accCellHtml).join('')}</div>
       <div class="group-head"><span class="g-lbl">Ahorro</span><span class="g-val">${euro(totalAhorro)}</span></div>
       <div class="acc-grid">${ahorros.map(accCellHtml).join('')}</div>
+      <div style="height:8px;"></div>
+      ${buildCategoryGroupChart(txMonths)}
+      ${buildSavingsEvolutionChart(planMonths)}
+      ${buildIncomeCategoryChart(txMonths)}
     `;
+
+    const chartInfoRegistry = {
+      gastos: g => g==='Otros' ? otrosCategories() : (g==='Ocio' ? ocioCategories() : [g]),
+      ingresos: g => [g]
+    };
+    $app.querySelectorAll('.chart-legend-item').forEach(el=>{
+      el.onclick = ()=>{
+        const chart = el.dataset.chart, group = el.dataset.group;
+        const cats = (chartInfoRegistry[chart] && chartInfoRegistry[chart](group)) || [group];
+        showCategoryInfoSheet(group, cats);
+      };
+    });
 
     $app.querySelectorAll('.ac-val-input').forEach(inp=>{
       inp.onchange = async (e)=>{
@@ -676,7 +790,7 @@
         return `<div class="hist-row" data-id="${t.id}">
           <div class="hist-dot ${dotClass}"></div>
           <div class="hist-main">
-            <div class="hist-cat">${t.category}</div>
+            <div class="hist-cat">${t.category}${t.extraordinary ? ' <span class="extra-tag">extra</span>' : ''}</div>
             <div class="hist-sub">${t.comment ? t.comment+' · ' : ''}${t.type==='Movimiento' ? (accName(t.account)+' → '+accName(t.toAccount)) : accName(t.account)}</div>
           </div>
           <div class="hist-right">
@@ -715,6 +829,11 @@
             <label>Categoría</label><div class="chip-row" id="catChips">${categoryChipsHtml()}</div>
           </div>
           <div class="field"><label>Comentario</label><input type="text" id="tx-comment" placeholder="opcional"></div>
+          ${type==='Gasto' ? `
+          <label class="check-row" id="extraRow">
+            <input type="checkbox" id="tx-extra">
+            <span>Gasto extraordinario</span>
+          </label>` : ''}
           <button class="btn-primary" id="txSave">Añadir</button>
         </div>
         <div class="hist-title">Historial reciente</div>
@@ -778,12 +897,14 @@
         const date = type==='Movimiento' ? document.getElementById('tx-date2').value : document.getElementById('tx-date').value;
         const comment = document.getElementById('tx-comment').value.trim();
         if(type==='Movimiento' && account===toAccount){ showToast('Elige dos cuentas distintas'); return; }
+        const extraEl = document.getElementById('tx-extra');
 
         const record = {
           id: uid(), type, account,
           toAccount: type==='Movimiento' ? toAccount : undefined,
           category: type==='Movimiento' ? (state.accounts.find(a=>a.id===toAccount)?.type==='ahorro' ? 'Ahorro' : 'Transferencia') : category,
-          amount, comment, date
+          amount, comment, date,
+          extraordinary: (type==='Gasto' && extraEl && extraEl.checked) ? true : undefined
         };
         state.transactions.push(record);
         await saveState();
@@ -823,6 +944,8 @@
 
     const ingT = tx.filter(t=>t.type==='Ingreso').reduce((a,t)=>a+t.amount,0);
     const gasT = tx.filter(t=>t.type==='Gasto').reduce((a,t)=>a+t.amount,0);
+    const gasNormal = tx.filter(t=>t.type==='Gasto' && !t.extraordinary).reduce((a,t)=>a+t.amount,0);
+    const gasExtra = tx.filter(t=>t.type==='Gasto' && t.extraordinary).reduce((a,t)=>a+t.amount,0);
 
     let html = headerHtml('Dashboard');
 
@@ -833,8 +956,8 @@
     const pct = goalPctForMonth(planKey);
     const objetivoAhorro = incomeForBudget * (pct/100);
     const presupuesto = Math.max(0, incomeForBudget - objetivoAhorro);
-    const disponible = presupuesto - gasT;
-    const pctUsed = presupuesto>0 ? Math.min(100,(gasT/presupuesto)*100) : (gasT>0?100:0);
+    const disponible = presupuesto - gasNormal;
+    const pctUsed = presupuesto>0 ? Math.min(100,(gasNormal/presupuesto)*100) : (gasNormal>0?100:0);
     const dispColor = disponible<0 ? 'var(--red)' : (pctUsed>85 ? 'var(--amber)' : 'var(--green)');
     const usingForecast = plan && plan.income!=null;
 
@@ -843,7 +966,8 @@
       <div class="battery-lbl">Disponible</div>
       <div class="battery-val" style="color:${dispColor};">${euro(disponible)}</div>
       <div class="battery-bar-bg"><div class="battery-bar-fill" style="width:${Math.max(3,pctUsed)}%;background:${dispColor};"></div></div>
-      <div class="battery-sub">Gastado ${fmt(gasT)}€ de ${fmt(presupuesto)}€ presupuesto${usingForecast?' <span style="color:var(--green);">· previsto</span>':''}</div>
+      <div class="battery-sub">Gastado ${fmt(gasNormal)}€ de ${fmt(presupuesto)}€ presupuesto${usingForecast?' <span style="color:var(--green);">· previsto</span>':''}</div>
+      ${gasExtra>0 ? `<div class="battery-extra-note">+ ${fmt(gasExtra)}€ en gastos extraordinarios (no incluidos)</div>` : ''}
     </div>`;
 
     const totalDays = daysBetween(range.start, range.end) + 1;
@@ -982,7 +1106,7 @@
             <div class="mv-line" data-id="${t.id}">
               <div class="mv-dot ${dotClass}"></div>
               <div class="mv-main">
-                <div class="mv-cat">${t.category}</div>
+                <div class="mv-cat">${t.category}${t.extraordinary ? ' <span class="extra-tag">extra</span>' : ''}</div>
                 ${t.comment ? `<div class="mv-comment">${t.comment}</div>` : ''}
               </div>
               <div class="mv-right">
@@ -1097,8 +1221,8 @@
     if(!allVals.length) return '';
     const minV = Math.min(0, Math.min(...allVals));
     const maxV = Math.max(...allVals, 1);
-    const W = Math.max(320, months.length*38);
-    const H = 150, padL=10, padR=10, padT=14, padB=22;
+    const W = Math.max(320, months.length*48);
+    const H = 160, padL=10, padR=10, padT=14, padB=28;
     const xStep = (W-padL-padR) / Math.max(1, months.length-1);
     const yScale = v => H-padB - ( (v-minV)/((maxV-minV)||1) ) * (H-padT-padB);
     const xPos = i => padL + i*xStep;
@@ -1115,7 +1239,6 @@
     const plannedPath = pathFor(planned);
     const realPath = pathFor(real);
     const zeroY = yScale(0);
-    const tickEvery = Math.max(1, Math.ceil(months.length/6));
     return `<div class="chart-wrap" style="margin-top:12px;">
       <div class="chart-title">Evolución del ahorro — ${accRem.name}</div>
       <div style="overflow-x:auto;">
@@ -1123,7 +1246,7 @@
           <line x1="${padL}" y1="${zeroY.toFixed(1)}" x2="${W-padR}" y2="${zeroY.toFixed(1)}" stroke="var(--line)" stroke-width="1"/>
           <path d="${plannedPath}" fill="none" stroke="var(--amber)" stroke-width="2" stroke-dasharray="5,4"/>
           <path d="${realPath}" fill="none" stroke="var(--green)" stroke-width="2.5"/>
-          ${months.map((m,i)=> i%tickEvery===0 ? `<text x="${xPos(i).toFixed(1)}" y="${H-6}" font-size="8" fill="var(--muted)" text-anchor="middle">${monthLabel(m)}</text>` : '').join('')}
+          ${months.map((m,i)=>`<text x="${xPos(i).toFixed(1)}" y="${H-8}" font-size="9" fill="var(--muted)" text-anchor="middle">${monthLabel(m)}</text>`).join('')}
         </svg>
       </div>
       <div class="day-chart-legend" style="margin-top:10px;">
@@ -1172,7 +1295,6 @@
           }).join('') || `<tr><td colspan="3" style="text-align:center;color:var(--muted);">Sin meses todavía</td></tr>`}
         </tbody>
       </table></div>
-      ${buildSavingsEvolutionChart(planMonths)}
     </div>`;
 
     html += `<div class="cell">
@@ -1347,6 +1469,11 @@
       ${type==='Movimiento' ? `<div class="field"><label>Fecha</label><input type="date" id="tx-date" value="${editing.date}"></div>` : ''}
       ${type!=='Movimiento' ? `<div class="field"><label>Categoría</label><div class="chip-row" id="catChips">${catList.map(c=>`<div class="chip ${c===category?'active':''}" data-cat="${c}">${c}</div>`).join('')}</div></div>` : ''}
       <div class="field"><label>Comentario</label><input type="text" id="tx-comment" value="${editing.comment||''}"></div>
+      ${type==='Gasto' ? `
+      <label class="check-row">
+        <input type="checkbox" id="tx-extra" ${editing.extraordinary?'checked':''}>
+        <span>Gasto extraordinario</span>
+      </label>` : ''}
       <button class="btn-primary" id="txSave">Guardar cambios</button>
       <button class="btn-secondary" id="txDelete">Eliminar movimiento</button>
     `;
@@ -1370,12 +1497,14 @@
       const comment = document.getElementById('tx-comment').value.trim();
       const acc = accEl.value;
       const toAcc = toEl ? toEl.value : undefined;
+      const extraEl = document.getElementById('tx-extra');
       if(type==='Movimiento' && acc===toAcc){ showToast('Elige dos cuentas distintas'); return; }
 
       editing.amount = amount;
       editing.account = acc;
       editing.date = date;
       editing.comment = comment;
+      editing.extraordinary = (type==='Gasto' && extraEl && extraEl.checked) ? true : undefined;
       if(type==='Movimiento'){
         editing.toAccount = toAcc;
         editing.category = state.accounts.find(a=>a.id===toAcc)?.type==='ahorro' ? 'Ahorro' : 'Transferencia';
