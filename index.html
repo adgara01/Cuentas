@@ -1715,44 +1715,44 @@
     }
 
     $sheet.innerHTML = `
-      <h2>Editar movimiento <span class="close-x" id="closeX">✕</span></h2>
-      <div class="field"><label>Cantidad</label><input class="mono-input" type="number" step="0.01" id="tx-amount" value="${editing.amount}"></div>
+      <h2>Editar movimiento <span class="close-x" id="editCloseX">✕</span></h2>
+      <div class="field"><label>Cantidad</label><input class="mono-input" type="number" step="0.01" id="edit-tx-amount" value="${editing.amount}"></div>
       <div class="two-col">
-        <div class="field"><label>${type==='Movimiento'?'Desde cuenta':'Cuenta'}</label><select id="tx-account">${accountOptionsHtml(account)}</select></div>
-        ${type==='Movimiento' ? `<div class="field"><label>A cuenta</label><select id="tx-toaccount">${accountOptionsHtml(toAccount, account)}</select></div>` : `<div class="field"><label>Fecha</label><input type="date" id="tx-date" value="${editing.date}"></div>`}
+        <div class="field"><label>${type==='Movimiento'?'Desde cuenta':'Cuenta'}</label><select id="edit-tx-account">${accountOptionsHtml(account)}</select></div>
+        ${type==='Movimiento' ? `<div class="field"><label>A cuenta</label><select id="edit-tx-toaccount">${accountOptionsHtml(toAccount, account)}</select></div>` : `<div class="field"><label>Fecha</label><input type="date" id="edit-tx-date" value="${editing.date}"></div>`}
       </div>
-      ${type==='Movimiento' ? `<div class="field"><label>Fecha</label><input type="date" id="tx-date" value="${editing.date}"></div>` : ''}
-      ${type!=='Movimiento' ? `<div class="field"><label>Categoría</label><div class="chip-row" id="catChips">${catList.map(c=>`<div class="chip ${c===category?'active':''}" data-cat="${c}">${c}</div>`).join('')}</div></div>` : ''}
-      <div class="field"><label>Comentario</label><input type="text" id="tx-comment" value="${editing.comment||''}"></div>
+      ${type==='Movimiento' ? `<div class="field"><label>Fecha</label><input type="date" id="edit-tx-date" value="${editing.date}"></div>` : ''}
+      ${type!=='Movimiento' ? `<div class="field"><label>Categoría</label><div class="chip-row" id="editCatChips">${catList.map(c=>`<div class="chip ${c===category?'active':''}" data-cat="${c}">${c}</div>`).join('')}</div></div>` : ''}
+      <div class="field"><label>Comentario</label><input type="text" id="edit-tx-comment" value="${editing.comment||''}"></div>
       ${type==='Gasto' ? `
       <label class="check-row">
-        <input type="checkbox" id="tx-extra" ${editing.extraordinary?'checked':''}>
+        <input type="checkbox" id="edit-tx-extra" ${editing.extraordinary?'checked':''}>
         <span>Gasto extraordinario</span>
       </label>` : ''}
-      <button class="btn-primary" id="txSave">Guardar cambios</button>
-      <button class="btn-secondary" id="txDelete">Eliminar movimiento</button>
+      <button class="btn-primary" id="editTxSave">Guardar cambios</button>
+      <button class="btn-secondary" id="editTxDelete">Eliminar movimiento</button>
     `;
     $overlay.classList.add('show');
-    document.getElementById('closeX').onclick = ()=> $overlay.classList.remove('show');
+    $sheet.querySelector('#editCloseX').onclick = ()=> $overlay.classList.remove('show');
 
-    document.querySelectorAll('#catChips .chip').forEach(chip=>{
+    $sheet.querySelectorAll('#editCatChips .chip').forEach(chip=>{
       chip.onclick = ()=>{
         category = chip.dataset.cat;
-        document.querySelectorAll('#catChips .chip').forEach(c=>c.classList.remove('active'));
+        $sheet.querySelectorAll('#editCatChips .chip').forEach(c=>c.classList.remove('active'));
         chip.classList.add('active');
       };
     });
 
-    document.getElementById('txSave').onclick = async ()=>{
-      const amount = parseFloat(document.getElementById('tx-amount').value);
+    $sheet.querySelector('#editTxSave').onclick = async ()=>{
+      const amount = parseFloat($sheet.querySelector('#edit-tx-amount').value);
       if(!amount || amount<=0){ showToast('Pon una cantidad válida'); return; }
-      const accEl = document.getElementById('tx-account');
-      const toEl = document.getElementById('tx-toaccount');
-      const date = document.getElementById('tx-date').value;
-      const comment = document.getElementById('tx-comment').value.trim();
+      const accEl = $sheet.querySelector('#edit-tx-account');
+      const toEl = $sheet.querySelector('#edit-tx-toaccount');
+      const date = $sheet.querySelector('#edit-tx-date').value;
+      const comment = $sheet.querySelector('#edit-tx-comment').value.trim();
       const acc = accEl.value;
       const toAcc = toEl ? toEl.value : undefined;
-      const extraEl = document.getElementById('tx-extra');
+      const extraEl = $sheet.querySelector('#edit-tx-extra');
       if(type==='Movimiento' && acc===toAcc){ showToast('Elige dos cuentas distintas'); return; }
 
       editing.amount = amount;
@@ -1771,7 +1771,7 @@
       showToast('Movimiento actualizado');
       if(refreshFn) refreshFn(); else render();
     };
-    document.getElementById('txDelete').onclick = async ()=>{
+    $sheet.querySelector('#editTxDelete').onclick = async ()=>{
       state.transactions = state.transactions.filter(t=>t.id!==editing.id);
       await saveState();
       $overlay.classList.remove('show');
