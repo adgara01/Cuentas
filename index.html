@@ -83,8 +83,15 @@
 
   /* ---------- total (big) ---------- */
   .total-cell{
-    text-align:center;padding:26px 12px 28px;
+    text-align:center;padding:26px 12px 28px;position:relative;
   }
+  .privacy-btn{
+    position:absolute;top:14px;right:14px;width:34px;height:34px;border-radius:50%;
+    background:var(--bg);border:none;display:flex;align-items:center;justify-content:center;
+    cursor:pointer;color:var(--ink-soft);
+  }
+  .privacy-btn svg{width:18px;height:18px;}
+  .masked-val{letter-spacing:2px;}
   .total-cell .t-lbl{font-size:12px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);font-weight:700;}
   .total-cell .t-val{font-size:42px;font-weight:800;line-height:1.15;margin-top:8px;letter-spacing:-1px;color:var(--green);}
   .total-cell .t-val.neg{color:var(--red);}
@@ -411,6 +418,7 @@
 
   let state = JSON.parse(JSON.stringify(DEFAULT_STATE));
   let activeTab = "resumen";
+  let privacyMode = true; // oculta el total y el ahorro por defecto en cada apertura; no se guarda entre sesiones
   let dashFilters = { types: new Set(), accounts: new Set(), categories: new Set(), dateMode:'nomina', nominaLabelMonth:null, customStart:null, customEnd:null };
   let dashFiltersOpen = false;
   let ajustesLogGastoOpen = false;
@@ -828,6 +836,10 @@
     });
   }
 
+  const EYE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+  const EYE_OFF_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
+  const MASK = '•••••€';
+
   function renderResumen(){
     const corrientes = state.accounts.filter(a=>a.type==='corriente');
     const ahorros = state.accounts.filter(a=>a.type==='ahorro');
@@ -835,7 +847,13 @@
     const totalAhorro = ahorros.reduce((s,a)=>s+currentBalance(a.id),0);
     const totalGeneral = totalCorriente + totalAhorro;
 
-    function accCellHtml(a){
+    function accCellHtml(a, masked){
+      if(masked){
+        return `<div class="acc-cell">
+          <div class="ac-name">${a.name}</div>
+          <div class="ac-val masked-val">${MASK}</div>
+        </div>`;
+      }
       if(a.manual){
         return `<div class="acc-cell">
           <div><div class="ac-name">${a.name}</div><div class="ac-manual-tag">manual</div></div>
@@ -858,18 +876,24 @@
     $app.innerHTML = `
       ${headerHtml()}
       <div class="cell total-cell">
+        <button class="privacy-btn" id="privacyToggle">${privacyMode ? EYE_OFF_ICON : EYE_ICON}</button>
         <div class="t-lbl">Patrimonio total</div>
-        <div class="t-val ${totalGeneral<0?'neg':''}">${euro(totalGeneral)}</div>
+        <div class="t-val ${totalGeneral<0?'neg':''} ${privacyMode?'masked-val':''}">${privacyMode ? MASK : euro(totalGeneral)}</div>
       </div>
       <div class="group-head"><span class="g-lbl">Cuentas corrientes</span><span class="g-val">${euro(totalCorriente)}</span></div>
-      <div class="acc-grid">${corrientes.map(accCellHtml).join('')}</div>
-      <div class="group-head"><span class="g-lbl">Ahorro</span><span class="g-val">${euro(totalAhorro)}</span></div>
-      <div class="acc-grid">${ahorros.map(accCellHtml).join('')}</div>
+      <div class="acc-grid">${corrientes.map(a=>accCellHtml(a,false)).join('')}</div>
+      <div class="group-head"><span class="g-lbl">Ahorro</span><span class="g-val ${privacyMode?'masked-val':''}">${privacyMode ? MASK : euro(totalAhorro)}</span></div>
+      <div class="acc-grid">${ahorros.map(a=>accCellHtml(a,privacyMode)).join('')}</div>
       <div style="height:8px;"></div>
       ${buildCategoryGroupChart(txMonths)}
       ${buildSavingsEvolutionChart(planMonths)}
       ${buildIncomeCategoryChart(txMonths)}
     `;
+
+    document.getElementById('privacyToggle').onclick = ()=>{
+      privacyMode = !privacyMode;
+      renderResumen();
+    };
 
     const chartInfoRegistry = {
       gastos: g => g==='Otros' ? otrosCategories() : (g==='Ocio' ? ocioCategories() : [g]),
