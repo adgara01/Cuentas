@@ -316,6 +316,7 @@
   }
   .plan-table-wrap{border-radius:16px;border:1px solid var(--line);overflow:hidden;}
   table.plan-table-fixed{width:100%;table-layout:fixed;border-collapse:collapse;}
+  table.plan-table-fixed th:first-child,table.plan-table-fixed td:first-child{width:42%;}
   table.plan-table-fixed th{
     font-size:10px;text-transform:uppercase;color:var(--ink-soft);background:var(--bg);
     text-align:right;padding:9px 8px;font-weight:700;
@@ -1500,8 +1501,12 @@
         <tbody>
           ${previsionMonths.map(m=>{
             const p = state.monthlyPlans[m] || {};
+            const coverMonth = nextMonthKey(m);
             return `<tr>
-              <td>${monthLabel(m)}</td>
+              <td>
+                <div style="font-weight:700;">Nómina ${monthLabel(m)}</div>
+                <div style="font-size:10px;color:var(--muted);font-weight:600;margin-top:2px;">para pasar ${monthLabel(coverMonth)}</div>
+              </td>
               <td><input type="number" step="0.01" class="plan-income" data-m="${m}" value="${p.income!=null?p.income:''}" placeholder="0"></td>
               <td>
                 <input type="number" step="1" min="0" max="100" class="plan-goal" data-m="${m}" value="${p.savingsGoalPct!=null?p.savingsGoalPct:''}" placeholder="0">
