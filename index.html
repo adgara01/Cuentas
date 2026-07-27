@@ -587,13 +587,16 @@
     const end = new Date(y, m+1, paydayDay-1);
     return { start: isoDate(start), end: isoDate(end) };
   }
-  // Un "periodo de nómina" se nombra por el mes en el que TERMINA (ej. pago el 24/12, termina 23/01 -> "Enero")
+  // Un "periodo de nómina" se nombra por el mes en el que SE COBRA (ej. pago el 24/07, dura hasta 23/08 -> "Julio")
   function nominaPeriodForLabelMonth(labelMonth, paydayDay){
-    return payPeriodContaining(labelMonth+'-01', paydayDay);
+    const [y,m] = labelMonth.split('-').map(Number);
+    const start = new Date(y, m-1, paydayDay);
+    const end = new Date(y, m, paydayDay-1);
+    return { start: isoDate(start), end: isoDate(end) };
   }
   function nominaCurrentLabelMonth(){
     const p = payPeriodContaining(todayStr(), state.paydayDay||1);
-    return monthKey(p.end);
+    return monthKey(p.start);
   }
   function nominaLabelMonthsRange(){
     const current = nominaCurrentLabelMonth();
