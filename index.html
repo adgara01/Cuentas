@@ -348,6 +348,10 @@
   .acc-manage-row:first-child{border-top:none;}
   .acc-manage-row .am-name{font-size:13.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .acc-manage-row .am-type{font-size:10.5px;color:var(--muted);text-transform:uppercase;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .group-edit-block{padding:12px 0;border-top:1px solid var(--line);}
+  .group-edit-block:first-child{border-top:none;padding-top:0;}
+  .group-name-btn{font-weight:700;font-size:14px;cursor:pointer;color:var(--ink);}
+  .row-del{color:var(--muted);font-size:15px;cursor:pointer;padding:2px 6px;}
   .acc-manage-row input{
     width:96px;text-align:right;font-size:13px;
     border:1.5px solid var(--line);border-radius:10px;background:var(--bg);padding:7px 9px;color:var(--ink);
@@ -412,6 +416,11 @@
     paydayDay: 1,
     monthlyPlans: {},
     exportEmail: '',
+    expenseGroups: [
+      {id:'g-ocio', name:'Ocio', categories:['Ocio','Restaurante/Bar','Subscripciones','Compras']},
+      {id:'g-vacaciones', name:'Vacaciones', categories:['Vacaciones']},
+      {id:'g-adricova', name:'Adri Cova', categories:['Adri Cova']}
+    ],
     syncCode: '',
     _updatedAt: 0
   };
@@ -460,6 +469,13 @@
         if(!state.monthlyPlans) state.monthlyPlans = {};
         if(state.syncCode===undefined) state.syncCode = '';
         if(!state._updatedAt) state._updatedAt = 0;
+        if(!state.expenseGroups){
+          state.expenseGroups = [
+            {id:'g-ocio', name: state.categories[3]||'Ocio', categories:[state.categories[1],state.categories[2],state.categories[3],state.categories[6]].filter(Boolean)},
+            {id:'g-vacaciones', name: state.categories[4]||'Vacaciones', categories:[state.categories[4]].filter(Boolean)},
+            {id:'g-adricova', name: state.categories[9]||'Adri Cova', categories:[state.categories[9]].filter(Boolean)}
+          ];
+        }
         state.accounts.forEach(a=>{ if(a.manualBalance===undefined) a.manualBalance = 0; if(a.manual===undefined) a.manual=false; });
       }
     }catch(e){ /* first run */ }
@@ -754,27 +770,19 @@
   }
 
   // ================= RESUMEN =================
-  // Grupos especiales del gráfico "Gastos por grupo", por POSICIÓN en state.categories (no por nombre)
-  // así sobreviven si el usuario renombra las categorías. Índices de las 11 categorías por defecto:
-  // 0 Transporte, 1 Restaurante/Bar, 2 Compras, 3 Ocio, 4 Vacaciones, 5 Crédito,
-  // 6 Subscripciones, 7 Gastos Piso, 8 Random, 9 Adri Cova, 10 Deuda (dejar)
-  const OCIO_GROUP_IDX = [1,2,3,6];
-  const OCIO_ANCHOR_IDX = 3;
-  const VACACIONES_IDX = 4;
-  const ADRICOVA_IDX = 9;
   function categoryGroupFor(cat){
-    const idx = state.categories.indexOf(cat);
-    if(idx===VACACIONES_IDX && state.categories[VACACIONES_IDX]!==undefined) return state.categories[VACACIONES_IDX];
-    if(idx===ADRICOVA_IDX && state.categories[ADRICOVA_IDX]!==undefined) return state.categories[ADRICOVA_IDX];
-    if(OCIO_GROUP_IDX.includes(idx)) return state.categories[OCIO_ANCHOR_IDX] || 'Ocio';
-    return 'Otros';
+    const g = state.expenseGroups.find(g=>g.categories.includes(cat));
+    return g ? g.name : 'Otros';
   }
   function otrosCategories(){
-    const special = [VACACIONES_IDX, ADRICOVA_IDX, ...OCIO_GROUP_IDX];
-    return state.categories.filter((c,i)=> !special.includes(i));
+    const assigned = new Set(state.expenseGroups.flatMap(g=>g.categories));
+    return state.categories.filter(c=>!assigned.has(c));
   }
-  function ocioCategories(){
-    return OCIO_GROUP_IDX.map(i=>state.categories[i]).filter(Boolean);
+  function groupMemberCategories(groupName){
+    const g = state.expenseGroups.find(g=>g.name===groupName);
+    if(g) return g.categories.slice();
+    if(groupName==='Otros') return otrosCategories();
+    return [groupName];
   }
   function showCategoryInfoSheet(title, categories){
     $sheet.innerHTML = `
@@ -784,17 +792,26 @@
     $overlay.classList.add('show');
     document.getElementById('closeX').onclick = ()=> $overlay.classList.remove('show');
   }
-  function showBarBreakdownSheet(title, rows){
+  function renderBreakdownRows(chartId, monthIdx, rows, drillGroup){
+    const d = lastStackedCharts[chartId];
+    const monthLbl = monthLabel(d.months[monthIdx]);
     const total = rows.reduce((s,r)=>s+r.amount,0);
     $sheet.innerHTML = `
-      <h2>${title} <span class="close-x" id="closeX">✕</span></h2>
-      ${rows.filter(r=>r.amount>0).map(r=>`
-        <div class="exp-row">
+      <h2>${drillGroup ? drillGroup : monthLbl} <span class="close-x" id="closeX">✕</span></h2>
+      ${drillGroup ? `<div class="empty-note" style="text-align:left;padding:0 0 10px;">${monthLbl}</div><button class="btn-ghost" id="breakdownBack" style="margin-bottom:12px;">← Volver a los grupos</button>` : ''}
+      ${rows.map((r,i)=>({r,i})).filter(o=>o.r.amount>0).map(o=>{
+        const r = o.r, i = o.i;
+        const clickable = !drillGroup && d.membersFn(r.label).length>1;
+        return `<div class="exp-row ${clickable?'breakdown-row':''}" ${clickable?`data-idx="${i}"`:''}>
           <div class="exp-name" style="display:flex;align-items:center;gap:8px;">
             <span style="width:10px;height:10px;border-radius:3px;background:${r.color};display:inline-block;flex-shrink:0;"></span>${r.label}
           </div>
-          <div class="mono" style="font-weight:700;">${fmt(r.amount)}€</div>
-        </div>`).join('') || '<div class="empty-note">Sin movimientos ese mes.</div>'}
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span class="mono" style="font-weight:700;">${fmt(r.amount)}€</span>
+            ${clickable?'<span style="color:var(--muted);font-size:13px;">›</span>':''}
+          </div>
+        </div>`;
+      }).join('') || '<div class="empty-note">Sin movimientos ese mes.</div>'}
       <div class="exp-row" style="border-top:2px solid var(--line);margin-top:4px;padding-top:12px;">
         <div class="exp-name" style="font-weight:700;color:var(--ink);">Total</div>
         <div class="mono" style="font-weight:800;">${fmt(total)}€</div>
@@ -802,11 +819,36 @@
     `;
     $overlay.classList.add('show');
     document.getElementById('closeX').onclick = ()=> $overlay.classList.remove('show');
+    const backBtn = document.getElementById('breakdownBack');
+    if(backBtn) backBtn.onclick = ()=> showBarBreakdownSheet(chartId, monthIdx);
+    if(!drillGroup){
+      $sheet.querySelectorAll('.breakdown-row').forEach(el=>{
+        const i = parseInt(el.dataset.idx,10);
+        const group = rows[i].label;
+        el.style.cursor = 'pointer';
+        el.onclick = ()=>{
+          const members = d.membersFn(group);
+          const m = d.months[monthIdx];
+          const subRows = members.map(cat=>({
+            label: cat,
+            amount: state.transactions.filter(t=>t.type===d.txType && monthKey(t.date)===m && t.category===cat).reduce((s,t)=>s+t.amount,0),
+            color: rows[i].color
+          }));
+          renderBreakdownRows(chartId, monthIdx, subRows, group);
+        };
+      });
+    }
+  }
+  function showBarBreakdownSheet(chartId, monthIdx){
+    const d = lastStackedCharts[chartId];
+    if(!d) return;
+    const rows = d.groups.map(g=>({label:g, amount:d.data[monthIdx][g], color:d.colors[g]}));
+    renderBreakdownRows(chartId, monthIdx, rows, null);
   }
   let lastStackedCharts = {};
   function buildStackedChart(opts){
-    // opts: {chartId, title, months, groups(order bottom->top), colors, sumFn(month,group), infoFn(group)->categories[]}
-    const { chartId, title, months, groups, colors, sumFn, infoFn } = opts;
+    // opts: {chartId, title, months, groups(order bottom->top), colors, sumFn(month,group), membersFn(group)->categories[], txType}
+    const { chartId, title, months, groups, colors, sumFn, membersFn, txType } = opts;
     if(!months.length) return '';
     const data = months.map(m=> Object.fromEntries(groups.map(g=>[g, sumFn(m,g)])));
     const totals = data.map(d=>groups.reduce((s,g)=>s+d[g],0));
@@ -814,7 +856,7 @@
     const barW = 24, gap=26, H=176, padT=20, padB=28;
     const usableH = H-padB-padT;
     const W = Math.max(320, months.length*(barW+gap));
-    lastStackedCharts[chartId] = { months, groups, colors, data };
+    lastStackedCharts[chartId] = { months, groups, colors, data, membersFn, txType };
     function barsFor(i){
       let yCursor = H-padB;
       let segs = '';
@@ -851,26 +893,19 @@
     $app.querySelectorAll('.bar-hit').forEach(el=>{
       el.onclick = ()=>{
         const chartId = el.dataset.chart, idx = parseInt(el.dataset.idx,10);
-        const d = lastStackedCharts[chartId];
-        if(!d) return;
-        const m = d.months[idx];
-        const rows = d.groups.map(g=>({label:g, amount:d.data[idx][g], color:d.colors[g]}));
-        showBarBreakdownSheet(monthLabel(m), rows);
+        showBarBreakdownSheet(chartId, idx);
       };
     });
   }
   function buildCategoryGroupChart(months){
-    const groups = ['Otros', state.categories[ADRICOVA_IDX]||'Adri Cova', state.categories[VACACIONES_IDX]||'Vacaciones', state.categories[OCIO_ANCHOR_IDX]||'Ocio'];
-    const colors = {
-      'Otros':'var(--muted)',
-      [groups[1]]:'var(--amber)',
-      [groups[2]]:'var(--cat-blue)',
-      [groups[3]]:'var(--cat-violet)'
-    };
+    const groups = ['Otros', ...state.expenseGroups.map(g=>g.name)];
+    const palette = ['var(--amber)','var(--cat-blue)','var(--cat-violet)','var(--green)','var(--red)'];
+    const colors = { 'Otros':'var(--muted)' };
+    state.expenseGroups.forEach((g,i)=>{ colors[g.name] = palette[i%palette.length]; });
     return buildStackedChart({
-      chartId:'gastos', title:'Gastos por grupo — evolución', months, groups, colors,
+      chartId:'gastos', title:'Gastos por grupo — evolución', months, groups, colors, txType:'Gasto',
       sumFn: (m,g)=> state.transactions.filter(t=>t.type==='Gasto' && monthKey(t.date)===m && categoryGroupFor(t.category)===g).reduce((s,t)=>s+t.amount,0),
-      infoFn: g=> g==='Otros' ? otrosCategories() : (g===groups[3] ? ocioCategories() : [g])
+      membersFn: groupMemberCategories
     });
   }
   function buildIncomeCategoryChart(months){
@@ -878,9 +913,9 @@
     const palette = ['var(--green)','var(--cat-violet)','var(--cat-blue)','var(--amber)','var(--muted)'];
     const colors = Object.fromEntries(groups.map((g,i)=>[g, palette[i%palette.length]]));
     return buildStackedChart({
-      chartId:'ingresos', title:'Ingresos por categoría — evolución', months, groups, colors,
+      chartId:'ingresos', title:'Ingresos por categoría — evolución', months, groups, colors, txType:'Ingreso',
       sumFn: (m,g)=> state.transactions.filter(t=>t.type==='Ingreso' && monthKey(t.date)===m && t.category===g).reduce((s,t)=>s+t.amount,0),
-      infoFn: g=> [g]
+      membersFn: g=>[g]
     });
   }
 
@@ -944,7 +979,7 @@
     };
 
     const chartInfoRegistry = {
-      gastos: g => g==='Otros' ? otrosCategories() : (g==='Ocio' ? ocioCategories() : [g]),
+      gastos: g => groupMemberCategories(g),
       ingresos: g => [g]
     };
     $app.querySelectorAll('.chart-legend-item').forEach(el=>{
@@ -1647,6 +1682,23 @@
     </div>`;
 
     html += `<div class="cell">
+      <div class="section-title">Agrupaciones de gastos</div>
+      <div class="empty-note" style="padding:0 0 14px;text-align:left;">Así se agrupan tus categorías en el gráfico "Gastos por grupo" de Resumen. Lo que no metas en ningún grupo cae en "Otros".</div>
+      ${state.expenseGroups.map((g,gi)=>`
+        <div class="group-edit-block">
+          <div class="compact-row" style="margin-bottom:10px;">
+            <div class="group-name-btn" data-gidx="${gi}">${g.name} <span style="color:var(--muted);">✎</span></div>
+            <span class="row-del group-del-btn" data-gidx="${gi}">✕</span>
+          </div>
+          <div class="filter-chip-row">
+            ${state.categories.map(c=>`<div class="fchip group-cat-chip ${g.categories.includes(c)?'active':''}" data-gidx="${gi}" data-cat="${c}">${c}</div>`).join('')}
+          </div>
+        </div>
+      `).join('') || '<div class="empty-note">Sin agrupaciones todavía.</div>'}
+      <button class="btn-ghost" id="addGroupBtn" style="margin-top:6px;">+ Nueva agrupación</button>
+    </div>`;
+
+    html += `<div class="cell">
       <div class="section-title">Cuentas</div>
       ${state.accounts.map(a=>`
         <div class="acc-manage-row">
@@ -1802,6 +1854,51 @@
         renderAjustes();
       };
     });
+    $app.querySelectorAll('.group-name-btn').forEach(el=>{
+      el.onclick = ()=>{
+        const gi = parseInt(el.dataset.gidx,10);
+        const g = state.expenseGroups[gi];
+        const newName = prompt('Nombre de la agrupación:', g.name);
+        if(!newName || !newName.trim() || newName.trim()===g.name) return;
+        g.name = newName.trim();
+        saveState();
+        renderAjustes();
+      };
+    });
+    $app.querySelectorAll('.group-del-btn').forEach(el=>{
+      el.onclick = ()=>{
+        const gi = parseInt(el.dataset.gidx,10);
+        const g = state.expenseGroups[gi];
+        if(!confirm('¿Eliminar la agrupación "'+g.name+'"? Sus categorías pasarán a "Otros".')) return;
+        state.expenseGroups.splice(gi,1);
+        saveState();
+        renderAjustes();
+      };
+    });
+    $app.querySelectorAll('.group-cat-chip').forEach(el=>{
+      el.onclick = ()=>{
+        const gi = parseInt(el.dataset.gidx,10);
+        const cat = el.dataset.cat;
+        const g = state.expenseGroups[gi];
+        if(g.categories.includes(cat)){
+          g.categories = g.categories.filter(c=>c!==cat);
+        } else {
+          state.expenseGroups.forEach(og=>{ og.categories = og.categories.filter(c=>c!==cat); });
+          g.categories.push(cat);
+        }
+        saveState();
+        renderAjustes();
+      };
+    });
+    const addGroupBtn = document.getElementById('addGroupBtn');
+    if(addGroupBtn) addGroupBtn.onclick = ()=>{
+      const name = prompt('Nombre de la nueva agrupación:');
+      if(!name || !name.trim()) return;
+      state.expenseGroups.push({id:uid(), name:name.trim(), categories:[]});
+      saveState();
+      showToast('Agrupación creada — toca sus categorías para añadirlas');
+      renderAjustes();
+    };
     document.getElementById('exportBtn').onclick = ()=>{
       const emailInput = document.getElementById('exportEmail');
       const email = emailInput.value.trim();
