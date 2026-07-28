@@ -754,18 +754,27 @@
   }
 
   // ================= RESUMEN =================
-  const OCIO_GROUP_CATS = ['Ocio','Restaurante/Bar','Subscripciones','Compras'];
+  // Grupos especiales del gráfico "Gastos por grupo", por POSICIÓN en state.categories (no por nombre)
+  // así sobreviven si el usuario renombra las categorías. Índices de las 11 categorías por defecto:
+  // 0 Transporte, 1 Restaurante/Bar, 2 Compras, 3 Ocio, 4 Vacaciones, 5 Crédito,
+  // 6 Subscripciones, 7 Gastos Piso, 8 Random, 9 Adri Cova, 10 Deuda (dejar)
+  const OCIO_GROUP_IDX = [1,2,3,6];
+  const OCIO_ANCHOR_IDX = 3;
+  const VACACIONES_IDX = 4;
+  const ADRICOVA_IDX = 9;
   function categoryGroupFor(cat){
-    if(cat==='Vacaciones') return 'Vacaciones';
-    if(cat==='Adri Cova') return 'Adri Cova';
-    if(OCIO_GROUP_CATS.includes(cat)) return 'Ocio';
+    const idx = state.categories.indexOf(cat);
+    if(idx===VACACIONES_IDX && state.categories[VACACIONES_IDX]!==undefined) return state.categories[VACACIONES_IDX];
+    if(idx===ADRICOVA_IDX && state.categories[ADRICOVA_IDX]!==undefined) return state.categories[ADRICOVA_IDX];
+    if(OCIO_GROUP_IDX.includes(idx)) return state.categories[OCIO_ANCHOR_IDX] || 'Ocio';
     return 'Otros';
   }
   function otrosCategories(){
-    return state.categories.filter(c=>!['Vacaciones','Adri Cova',...OCIO_GROUP_CATS].includes(c));
+    const special = [VACACIONES_IDX, ADRICOVA_IDX, ...OCIO_GROUP_IDX];
+    return state.categories.filter((c,i)=> !special.includes(i));
   }
   function ocioCategories(){
-    return state.categories.filter(c=>OCIO_GROUP_CATS.includes(c));
+    return OCIO_GROUP_IDX.map(i=>state.categories[i]).filter(Boolean);
   }
   function showCategoryInfoSheet(title, categories){
     $sheet.innerHTML = `
@@ -775,6 +784,26 @@
     $overlay.classList.add('show');
     document.getElementById('closeX').onclick = ()=> $overlay.classList.remove('show');
   }
+  function showBarBreakdownSheet(title, rows){
+    const total = rows.reduce((s,r)=>s+r.amount,0);
+    $sheet.innerHTML = `
+      <h2>${title} <span class="close-x" id="closeX">✕</span></h2>
+      ${rows.filter(r=>r.amount>0).map(r=>`
+        <div class="exp-row">
+          <div class="exp-name" style="display:flex;align-items:center;gap:8px;">
+            <span style="width:10px;height:10px;border-radius:3px;background:${r.color};display:inline-block;flex-shrink:0;"></span>${r.label}
+          </div>
+          <div class="mono" style="font-weight:700;">${fmt(r.amount)}€</div>
+        </div>`).join('') || '<div class="empty-note">Sin movimientos ese mes.</div>'}
+      <div class="exp-row" style="border-top:2px solid var(--line);margin-top:4px;padding-top:12px;">
+        <div class="exp-name" style="font-weight:700;color:var(--ink);">Total</div>
+        <div class="mono" style="font-weight:800;">${fmt(total)}€</div>
+      </div>
+    `;
+    $overlay.classList.add('show');
+    document.getElementById('closeX').onclick = ()=> $overlay.classList.remove('show');
+  }
+  let lastStackedCharts = {};
   function buildStackedChart(opts){
     // opts: {chartId, title, months, groups(order bottom->top), colors, sumFn(month,group), infoFn(group)->categories[]}
     const { chartId, title, months, groups, colors, sumFn, infoFn } = opts;
@@ -785,6 +814,7 @@
     const barW = 24, gap=26, H=176, padT=20, padB=28;
     const usableH = H-padB-padT;
     const W = Math.max(320, months.length*(barW+gap));
+    lastStackedCharts[chartId] = { months, groups, colors, data };
     function barsFor(i){
       let yCursor = H-padB;
       let segs = '';
@@ -801,14 +831,15 @@
         const topY = (H-padB) - (totals[i]/maxTotal)*usableH;
         segs += `<text x="${(i*(barW+gap)+gap/2+barW/2).toFixed(1)}" y="${Math.max(10,topY-6).toFixed(1)}" font-size="8.5" fill="var(--ink-soft)" text-anchor="middle" font-weight="700">${fmt(totals[i])}€</text>`;
       }
+      segs += `<rect class="bar-hit" data-chart="${chartId}" data-idx="${i}" x="${(i*(barW+gap)).toFixed(1)}" y="0" width="${(barW+gap).toFixed(1)}" height="${H}" fill="transparent" style="cursor:pointer;"/>`;
       return segs;
     }
     return `<div class="chart-wrap" style="margin-top:12px;">
-      <div class="chart-title">${title}</div>
+      <div class="chart-title">${title} <span style="font-weight:400;text-transform:none;letter-spacing:0;">(toca una barra)</span></div>
       <div style="overflow-x:auto;">
         <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;">
           ${months.map((m,i)=>barsFor(i)).join('')}
-          ${months.map((m,i)=>`<text x="${(i*(barW+gap)+gap/2+barW/2).toFixed(1)}" y="${H-8}" font-size="9" fill="var(--muted)" text-anchor="middle">${monthLabel(m)}</text>`).join('')}
+          ${months.map((m,i)=>`<text x="${(i*(barW+gap)+gap/2+barW/2).toFixed(1)}" y="${H-8}" font-size="9" fill="var(--muted)" text-anchor="middle" style="pointer-events:none;">${monthLabel(m)}</text>`).join('')}
         </svg>
       </div>
       <div class="day-chart-legend" style="margin-top:10px;flex-wrap:wrap;row-gap:6px;">
@@ -816,13 +847,30 @@
       </div>
     </div>`;
   }
+  function wireStackedChartClicks(){
+    $app.querySelectorAll('.bar-hit').forEach(el=>{
+      el.onclick = ()=>{
+        const chartId = el.dataset.chart, idx = parseInt(el.dataset.idx,10);
+        const d = lastStackedCharts[chartId];
+        if(!d) return;
+        const m = d.months[idx];
+        const rows = d.groups.map(g=>({label:g, amount:d.data[idx][g], color:d.colors[g]}));
+        showBarBreakdownSheet(monthLabel(m), rows);
+      };
+    });
+  }
   function buildCategoryGroupChart(months){
-    const groups = ['Otros','Adri Cova','Vacaciones','Ocio'];
-    const colors = { Otros:'var(--muted)', 'Adri Cova':'var(--amber)', Vacaciones:'var(--cat-blue)', Ocio:'var(--cat-violet)' };
+    const groups = ['Otros', state.categories[ADRICOVA_IDX]||'Adri Cova', state.categories[VACACIONES_IDX]||'Vacaciones', state.categories[OCIO_ANCHOR_IDX]||'Ocio'];
+    const colors = {
+      'Otros':'var(--muted)',
+      [groups[1]]:'var(--amber)',
+      [groups[2]]:'var(--cat-blue)',
+      [groups[3]]:'var(--cat-violet)'
+    };
     return buildStackedChart({
       chartId:'gastos', title:'Gastos por grupo — evolución', months, groups, colors,
       sumFn: (m,g)=> state.transactions.filter(t=>t.type==='Gasto' && monthKey(t.date)===m && categoryGroupFor(t.category)===g).reduce((s,t)=>s+t.amount,0),
-      infoFn: g=> g==='Otros' ? otrosCategories() : (g==='Ocio' ? ocioCategories() : [g])
+      infoFn: g=> g==='Otros' ? otrosCategories() : (g===groups[3] ? ocioCategories() : [g])
     });
   }
   function buildIncomeCategoryChart(months){
@@ -907,6 +955,7 @@
       };
     });
     wireSavingsChartInteractivity();
+    wireStackedChartClicks();
 
     $app.querySelectorAll('.ac-val-input').forEach(inp=>{
       inp.onchange = async (e)=>{
@@ -1585,6 +1634,19 @@
     </div>`;
 
     html += `<div class="cell">
+      <div class="section-title">Categorías</div>
+      <div class="empty-note" style="padding:0 0 10px;text-align:left;">Toca una para cambiarle el nombre. El número de categorías se mantiene siempre.</div>
+      <div class="filter-label">Gastos</div>
+      <div class="filter-chip-row" id="renameGastoChips">
+        ${state.categories.map((c,i)=>`<div class="fchip" data-list="categories" data-idx="${i}">${c}</div>`).join('')}
+      </div>
+      <div class="filter-label" style="margin-top:14px;">Ingresos</div>
+      <div class="filter-chip-row" id="renameIngresoChips">
+        ${state.incomeCategories.map((c,i)=>`<div class="fchip" data-list="incomeCategories" data-idx="${i}">${c}</div>`).join('')}
+      </div>
+    </div>`;
+
+    html += `<div class="cell">
       <div class="section-title">Cuentas</div>
       ${state.accounts.map(a=>`
         <div class="acc-manage-row">
@@ -1723,6 +1785,23 @@
       state.accounts.push({id:uid(), name:name.trim(), type:isAhorro?'ahorro':'corriente', manual:isManual, initial:0, manualBalance:0, expected:0});
       saveState(); renderAjustes();
     };
+    $app.querySelectorAll('#renameGastoChips .fchip, #renameIngresoChips .fchip').forEach(chip=>{
+      chip.onclick = ()=>{
+        const listName = chip.dataset.list;
+        const idx = parseInt(chip.dataset.idx,10);
+        const list = state[listName];
+        const oldName = list[idx];
+        const newName = prompt('Nuevo nombre para "'+oldName+'":', oldName);
+        if(!newName || !newName.trim() || newName.trim()===oldName) return;
+        const trimmed = newName.trim();
+        if(list.includes(trimmed)){ showToast('Ya existe una categoría con ese nombre'); return; }
+        list[idx] = trimmed;
+        state.transactions.forEach(t=>{ if(t.category===oldName) t.category = trimmed; });
+        saveState();
+        showToast('Categoría renombrada');
+        renderAjustes();
+      };
+    });
     document.getElementById('exportBtn').onclick = ()=>{
       const emailInput = document.getElementById('exportEmail');
       const email = emailInput.value.trim();
