@@ -362,9 +362,13 @@
   .onboard-wrap h1{font-size:23px;font-weight:800;margin-bottom:8px;letter-spacing:-0.3px;}
   .onboard-wrap p{color:var(--ink-soft);font-size:14px;line-height:1.55;margin-bottom:22px;}
   .ob-acc{background:var(--cell);border-radius:16px;padding:13px 16px;margin-bottom:10px;box-shadow:var(--shadow);}
-  .ob-acc label{display:flex;justify-content:space-between;font-size:13px;font-weight:700;color:var(--ink-soft);margin-bottom:8px;}
-  .ob-acc label .ob-type{font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;}
-  .ob-acc input{
+  .ob-acc label{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--ink-soft);margin-bottom:8px;}
+  .ob-acc label .ob-type{font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;flex-shrink:0;}
+  .ob-name-input{
+    flex:1;min-width:0;border:none;background:transparent;font-size:13px;font-weight:700;color:var(--ink);
+    padding:2px 0;border-bottom:1.5px dashed var(--line-soft, var(--line));
+  }
+  .ob-acc input:not(.ob-name-input){
     width:100%;padding:11px 13px;border:1.5px solid var(--line);border-radius:12px;background:var(--bg);
     font-size:17px;font-weight:700;color:var(--ink);
   }
@@ -696,61 +700,91 @@
   // ================= ONBOARDING =================
   function renderOnboarding(){
     $tabbarWrap.style.display = 'none';
-    $app.innerHTML = `
-      <div class="onboard-wrap">
-        <h1>Antes de empezar</h1>
-        <div class="cell" style="margin-bottom:22px;">
-          <div class="section-title" style="margin-bottom:10px;">¿Ya usas Cuentas en otro dispositivo?</div>
-          <div class="field"><label>Código de sincronización</label><input type="text" id="obSyncCode" placeholder="tu código"></div>
-          <button class="btn-ghost" id="obRestore" style="margin-top:2px;">Restaurar desde la nube</button>
-        </div>
-        <p>O, si es la primera vez, dime cuánto hay ahora mismo en cada cuenta. Será el punto de partida — a partir de aquí todo se calcula solo con lo que vayas registrando.</p>
-        <div id="obList"></div>
-        <button class="btn-primary" id="obStart">Empezar de cero</button>
-      </div>
-    `;
-    const $list = document.getElementById('obList');
-    state.accounts.forEach(a=>{
-      const row = document.createElement('div');
-      row.className = 'ob-acc';
-      row.innerHTML = `
-        <label>${a.name} <span class="ob-type">${a.manual ? 'manual' : a.type}</span></label>
-        <input type="number" step="0.01" inputmode="decimal" placeholder="0.00" data-acc="${a.id}">
-      `;
-      $list.appendChild(row);
-    });
-    document.getElementById('obRestore').onclick = async ()=>{
-      const code = document.getElementById('obSyncCode').value.trim();
-      if(!code){ showToast('Escribe tu código'); return; }
-      showToast('Buscando en la nube…');
-      try{
-        const remote = await pullFromCloud(code);
-        if(remote && remote.data){
-          state = Object.assign(JSON.parse(JSON.stringify(DEFAULT_STATE)), remote.data);
-          state.syncCode = code;
-          state.onboarded = true;
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-          $tabbarWrap.style.display = 'flex';
-          showToast('Datos restaurados');
-          render();
-        } else {
-          showToast('No hay datos con ese código todavía');
-        }
-      }catch(e){
-        showToast('Sin conexión, inténtalo de nuevo');
-      }
-    };
-    document.getElementById('obStart').onclick = async ()=>{
-      $list.querySelectorAll('input').forEach(inp=>{
-        const acc = state.accounts.find(a=>a.id===inp.dataset.acc);
-        const v = parseFloat(inp.value)||0;
-        if(acc.manual) acc.manualBalance = v; else acc.initial = v;
+    function syncFieldsIntoState(){
+      document.querySelectorAll('.ob-acc').forEach(row=>{
+        const id = row.dataset.acc;
+        const acc = state.accounts.find(a=>a.id===id);
+        if(!acc) return;
+        const nameInp = row.querySelector('.ob-name-input');
+        const balInp = row.querySelector('.ob-bal-input');
+        if(nameInp && nameInp.value.trim()) acc.name = nameInp.value.trim();
+        if(balInp){ const v = parseFloat(balInp.value)||0; if(acc.manual) acc.manualBalance = v; else acc.initial = v; }
       });
-      state.onboarded = true;
-      await saveState();
-      $tabbarWrap.style.display = 'flex';
-      render();
-    };
+    }
+    function draw(){
+      $app.innerHTML = `
+        <div class="onboard-wrap">
+          <h1>Antes de empezar</h1>
+          <div class="cell" style="margin-bottom:22px;">
+            <div class="section-title" style="margin-bottom:10px;">¿Ya usas Cuentas en otro dispositivo?</div>
+            <div class="field"><label>Código de sincronización</label><input type="text" id="obSyncCode" placeholder="tu código"></div>
+            <button class="btn-ghost" id="obRestore" style="margin-top:2px;">Restaurar desde la nube</button>
+          </div>
+          <p>O, si es la primera vez: pon el nombre de tus cuentas (puedes cambiarlas, borrarlas o añadir las que quieras) y cuánto hay en cada una ahora mismo. Será el punto de partida.</p>
+          <div id="obList">
+            ${state.accounts.map(a=>`
+              <div class="ob-acc" data-acc="${a.id}">
+                <label>
+                  <input type="text" class="ob-name-input" value="${a.name}">
+                  <span class="ob-type">${a.manual ? 'manual' : a.type}</span>
+                  <span class="row-del ob-del-btn" data-acc="${a.id}">✕</span>
+                </label>
+                <input class="ob-bal-input" type="number" step="0.01" inputmode="decimal" placeholder="0.00" value="${a.manual ? (a.manualBalance||'') : (a.initial||'')}">
+              </div>
+            `).join('')}
+          </div>
+          <button class="btn-ghost" id="obAddAcc" style="margin-top:4px;">+ Añadir cuenta</button>
+          <button class="btn-primary" id="obStart" style="margin-top:16px;">Empezar</button>
+        </div>
+      `;
+      document.getElementById('obRestore').onclick = async ()=>{
+        const code = document.getElementById('obSyncCode').value.trim();
+        if(!code){ showToast('Escribe tu código'); return; }
+        showToast('Buscando en la nube…');
+        try{
+          const remote = await pullFromCloud(code);
+          if(remote && remote.data){
+            state = Object.assign(JSON.parse(JSON.stringify(DEFAULT_STATE)), remote.data);
+            state.syncCode = code;
+            state.onboarded = true;
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+            $tabbarWrap.style.display = 'flex';
+            showToast('Datos restaurados');
+            render();
+          } else {
+            showToast('No hay datos con ese código todavía');
+          }
+        }catch(e){
+          showToast('Sin conexión, inténtalo de nuevo');
+        }
+      };
+      document.querySelectorAll('.ob-del-btn').forEach(btn=>{
+        btn.onclick = (e)=>{
+          e.preventDefault();
+          if(state.accounts.length<=1){ showToast('Necesitas al menos una cuenta'); return; }
+          syncFieldsIntoState();
+          state.accounts = state.accounts.filter(a=>a.id!==btn.dataset.acc);
+          draw();
+        };
+      });
+      document.getElementById('obAddAcc').onclick = ()=>{
+        const name = prompt('Nombre de la cuenta:');
+        if(!name || !name.trim()) return;
+        const isAhorro = confirm('¿Es una cuenta de ahorro? Aceptar = ahorro, Cancelar = corriente');
+        const isManual = isAhorro ? confirm('¿El saldo lo actualizas tú a mano (ej. inversión)? Aceptar = manual, Cancelar = se calcula solo') : false;
+        syncFieldsIntoState();
+        state.accounts.push({id:uid(), name:name.trim(), type:isAhorro?'ahorro':'corriente', manual:isManual, initial:0, manualBalance:0, expected:0});
+        draw();
+      };
+      document.getElementById('obStart').onclick = async ()=>{
+        syncFieldsIntoState();
+        state.onboarded = true;
+        await saveState();
+        $tabbarWrap.style.display = 'flex';
+        render();
+      };
+    }
+    draw();
   }
 
   // ================= TABS =================
