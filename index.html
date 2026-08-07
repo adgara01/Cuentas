@@ -247,13 +247,13 @@
   .budget-bottom b{font-weight:700;}
 
   /* ---------- day-of-month log chart ---------- */
-  .day-chart-bars{display:flex;align-items:flex-end;gap:3px;min-height:88px;padding:0 2px;}
+  .day-chart-bars{display:flex;align-items:flex-end;gap:0;min-height:108px;padding:0 2px;}
   .day-chart-col{display:flex;flex-direction:column;align-items:center;flex-shrink:0;}
-  .day-chart-pair{display:flex;align-items:flex-end;gap:2px;height:68px;}
-  .day-bar{width:4px;border-radius:3px 3px 1px 1px;}
+  .day-chart-pair{display:flex;align-items:flex-end;gap:3px;height:80px;}
+  .day-bar{width:6px;border-radius:3px 3px 1px 1px;}
   .day-bar-out{background:var(--red);}
   .day-bar-in{background:var(--green);}
-  .day-chart-lbl{font-size:7px;color:var(--muted);margin-top:5px;font-weight:600;white-space:nowrap;}
+  .day-chart-lbl{font-size:9px;color:var(--muted);margin-top:6px;font-weight:600;white-space:nowrap;}
   .day-chart-legend{display:flex;gap:16px;margin-top:14px;padding:0 4px;font-size:11.5px;color:var(--ink-soft);font-weight:600;}
   .day-chart-legend span{display:flex;align-items:center;gap:6px;}
   .chart-tooltip{
@@ -1276,7 +1276,7 @@
     </div>`;
 
     const totalDays = daysBetween(range.start, range.end) + 1;
-    const grouped = totalDays > 15;
+    const grouped = totalDays > 62;
     const bucketDays = [];
     if(!grouped){
       for(let i=0;i<totalDays;i++) bucketDays.push({ label: String(new Date(addDays(range.start,i)+'T00:00:00').getDate()), start: addDays(range.start,i), end: addDays(range.start,i) });
@@ -1295,18 +1295,21 @@
     });
     const maxDayVal = Math.max(...dayData.map(d=>Math.max(d.gasto,d.ingreso)),1);
     const maxLog = Math.log(maxDayVal+1) || 1;
-    function logH(v){ return v>0 ? Math.max(4,(Math.log(v+1)/maxLog)*68) : 0; }
+    function logH(v){ return v>0 ? Math.max(5,(Math.log(v+1)/maxLog)*80) : 0; }
+    const dayColWidth = 26;
     html += `<div class="chart-wrap">
       <div class="chart-title">${grouped?'Semanas':'Gasto diario'}</div>
-      <div class="day-chart-bars">
-        ${dayData.map(dd=>`
-          <div class="day-chart-col">
-            <div class="day-chart-pair">
-              <div class="day-bar day-bar-out" style="height:${logH(dd.gasto)}px;" title="Gasto ${fmt(dd.gasto)}€"></div>
-              <div class="day-bar day-bar-in" style="height:${logH(dd.ingreso)}px;" title="Ingreso ${fmt(dd.ingreso)}€"></div>
-            </div>
-            <div class="day-chart-lbl">${dd.label}</div>
-          </div>`).join('')}
+      <div style="overflow-x:auto;">
+        <div class="day-chart-bars" style="min-width:${dayData.length*dayColWidth}px;">
+          ${dayData.map(dd=>`
+            <div class="day-chart-col" style="width:${dayColWidth}px;">
+              <div class="day-chart-pair">
+                <div class="day-bar day-bar-out" style="height:${logH(dd.gasto)}px;" title="Gasto ${fmt(dd.gasto)}€"></div>
+                <div class="day-bar day-bar-in" style="height:${logH(dd.ingreso)}px;" title="Ingreso ${fmt(dd.ingreso)}€"></div>
+              </div>
+              <div class="day-chart-lbl">${dd.label}</div>
+            </div>`).join('')}
+        </div>
       </div>
     </div>`;
     html += `</div>`;
