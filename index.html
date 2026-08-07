@@ -1738,15 +1738,17 @@
     `);
 
     html += collapsibleCard('categorias', 'Categorías', `
-      <div class="empty-note" style="padding:0 0 10px;text-align:left;">Toca una para cambiarle el nombre. El número de categorías se mantiene siempre.</div>
+      <div class="empty-note" style="padding:0 0 10px;text-align:left;">Toca una para cambiarle el nombre, o añade las que quieras.</div>
       <div class="filter-label">Gastos</div>
       <div class="filter-chip-row" id="renameGastoChips">
         ${state.categories.map((c,i)=>`<div class="fchip" data-list="categories" data-idx="${i}">${c}</div>`).join('')}
       </div>
-      <div class="filter-label" style="margin-top:14px;">Ingresos</div>
+      <button class="btn-ghost" id="addCatGastoBtn" style="margin-top:10px;">+ Añadir categoría de gasto</button>
+      <div class="filter-label" style="margin-top:18px;">Ingresos</div>
       <div class="filter-chip-row" id="renameIngresoChips">
         ${state.incomeCategories.map((c,i)=>`<div class="fchip" data-list="incomeCategories" data-idx="${i}">${c}</div>`).join('')}
       </div>
+      <button class="btn-ghost" id="addCatIngresoBtn" style="margin-top:10px;">+ Añadir categoría de ingreso</button>
     `);
 
     html += collapsibleCard('grupos', 'Agrupaciones de gastos', `
@@ -2013,6 +2015,28 @@
         renderAjustes();
       };
     });
+    const addCatGastoBtn = document.getElementById('addCatGastoBtn');
+    if(addCatGastoBtn) addCatGastoBtn.onclick = ()=>{
+      const name = prompt('Nombre de la categoría de gasto:');
+      if(!name || !name.trim()) return;
+      const trimmed = name.trim();
+      if(state.categories.includes(trimmed)){ showToast('Ya existe'); return; }
+      state.categories.push(trimmed);
+      saveState();
+      showToast('Categoría añadida');
+      renderAjustes();
+    };
+    const addCatIngresoBtn = document.getElementById('addCatIngresoBtn');
+    if(addCatIngresoBtn) addCatIngresoBtn.onclick = ()=>{
+      const name = prompt('Nombre de la categoría de ingreso:');
+      if(!name || !name.trim()) return;
+      const trimmed = name.trim();
+      if(state.incomeCategories.includes(trimmed)){ showToast('Ya existe'); return; }
+      state.incomeCategories.push(trimmed);
+      saveState();
+      showToast('Categoría añadida');
+      renderAjustes();
+    };
     $app.querySelectorAll('.group-name-btn').forEach(el=>{
       el.onclick = ()=>{
         const gi = parseInt(el.dataset.gidx,10);
