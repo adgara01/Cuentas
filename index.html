@@ -219,7 +219,8 @@
   .chart-wrap{background:var(--cell);border-radius:20px;padding:14px 8px 10px;overflow-x:auto;box-shadow:var(--shadow);}
   .chart-wrap svg,.chart-wrap svg *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
   .chart-wrap svg text{pointer-events:none;}
-  .chart-title{font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--muted);font-weight:700;margin-bottom:10px;padding:0 4px;}
+  .chart-title{font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--muted);font-weight:700;margin-bottom:2px;padding:0 4px;}
+  .chart-subtitle{font-size:10.5px;color:var(--muted);font-weight:500;margin-bottom:12px;padding:0 4px;text-transform:none;letter-spacing:0;}
   .chart-bars{display:flex;align-items:flex-end;gap:7px;min-height:70px;padding:0 2px;}
   .chart-bar-item{display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:36px;}
   .chart-bar-val{font-size:8px;font-weight:700;margin-bottom:5px;white-space:nowrap;color:var(--ink-soft);}
@@ -577,6 +578,11 @@
     const names = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
     return names[parseInt(m,10)-1] + ' ' + y;
   }
+  function monthLabelShort(key){
+    const [y,m] = key.split('-');
+    const names = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+    return names[parseInt(m,10)-1];
+  }
   function prevMonthKey(key){
     const [y,m] = key.split('-').map(Number);
     const d = new Date(y, m-2, 1);
@@ -925,7 +931,7 @@
     const data = months.map(m=> Object.fromEntries(groups.map(g=>[g, sumFn(m,g)])));
     const totals = data.map(d=>groups.reduce((s,g)=>s+d[g],0));
     const maxTotal = Math.max(...totals,1);
-    const barW = 24, gap=26, H=192, padT=20, padB=44;
+    const barW = 22, gap=16, H=176, padT=20, padB=28;
     const usableH = H-padB-padT;
     const W = Math.max(320, months.length*(barW+gap));
     lastStackedCharts[chartId] = { months, groups, colors, data, membersFn, txType };
@@ -950,11 +956,11 @@
     }
     return `<div class="chart-wrap" style="margin-top:12px;">
       <div class="chart-title">${title} <span style="font-weight:400;text-transform:none;letter-spacing:0;">(toca una barra)</span></div>
+      <div class="chart-subtitle">Cada mes es justo después de cobrar la nómina de ese mes.</div>
       <div style="overflow-x:auto;">
         <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;">
           ${months.map((m,i)=>barsFor(i)).join('')}
-          ${months.map((m,i)=>`<text x="${(i*(barW+gap)+gap/2+barW/2).toFixed(1)}" y="${H-30}" font-size="9" fill="var(--muted)" text-anchor="middle" style="pointer-events:none;" font-weight="700">${monthLabel(m)}</text>
-          <text x="${(i*(barW+gap)+gap/2+barW/2).toFixed(1)}" y="${H-18}" font-size="7" fill="var(--muted)" text-anchor="middle" style="pointer-events:none;">${nominaRangeShort(m)}</text>`).join('')}
+          ${months.map((m,i)=>`<text x="${(i*(barW+gap)+gap/2+barW/2).toFixed(1)}" y="${H-10}" font-size="9" fill="var(--muted)" text-anchor="middle" style="pointer-events:none;" font-weight="700">${monthLabelShort(m)}</text>`).join('')}
         </svg>
       </div>
       <div class="day-chart-legend" style="margin-top:10px;flex-wrap:wrap;row-gap:6px;">
@@ -1544,8 +1550,8 @@
     if(!allVals.length){ lastSavingsChart = null; return ''; }
     const minV = Math.min(0, Math.min(...allVals));
     const maxV = Math.max(...allVals, 1);
-    const W = Math.max(320, months.length*52);
-    const H = 206, padL=46, padR=14, padT=14, padB=44;
+    const W = Math.max(320, months.length*38);
+    const H = 190, padL=46, padR=14, padT=14, padB=28;
     const xStep = (W-padL-padR) / Math.max(1, months.length-1);
     const yScale = v => H-padB - ( (v-minV)/((maxV-minV)||1) ) * (H-padT-padB);
     const xPos = i => padL + i*xStep;
@@ -1574,6 +1580,7 @@
 
     return `<div class="chart-wrap" style="margin-top:12px;">
       <div class="chart-title">Evolución del ahorro — ${accRem.name} <span style="font-weight:400;text-transform:none;letter-spacing:0;">(toca o arrastra)</span></div>
+      <div class="chart-subtitle">Cada mes es justo después de cobrar la nómina de ese mes.</div>
       <div style="overflow-x:auto;position:relative;" id="savingsScrollWrap">
         <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;" id="savingsSvg">
           ${ticks.map(t=>{
@@ -1584,8 +1591,7 @@
           <path d="${plannedPath}" fill="none" stroke="var(--amber)" stroke-width="2" stroke-dasharray="5,4"/>
           <path d="${realPath}" fill="none" stroke="var(--green)" stroke-width="2.5"/>
           ${currentDotHtml}
-          ${months.map((m,i)=>`<text x="${xPos(i).toFixed(1)}" y="${H-24}" font-size="9" fill="var(--muted)" text-anchor="middle" font-weight="700">${monthLabel(m)}</text>
-          <text x="${xPos(i).toFixed(1)}" y="${H-12}" font-size="7" fill="var(--muted)" text-anchor="middle">${nominaRangeShort(m)}</text>`).join('')}
+          ${months.map((m,i)=>`<text x="${xPos(i).toFixed(1)}" y="${H-10}" font-size="9" fill="var(--muted)" text-anchor="middle" font-weight="700">${monthLabelShort(m)}</text>`).join('')}
           <line id="savingsVLine" x1="0" y1="${padT}" x2="0" y2="${H-padB}" stroke="var(--ink-soft)" stroke-width="1" style="opacity:0;"/>
           <circle id="savingsDotP" r="4" fill="var(--amber)" stroke="#fff" stroke-width="1.5" style="opacity:0;"/>
           <circle id="savingsDotR" r="4" fill="var(--green)" stroke="#fff" stroke-width="1.5" style="opacity:0;"/>
