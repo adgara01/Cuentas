@@ -201,7 +201,7 @@
     background:var(--bg);border:none;border-radius:999px;padding:8px 14px;color:var(--ink);font-weight:700;
   }
   .filter-label{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:700;margin:12px 0 7px;}
-  .cat-group-label{font-size:12px;color:var(--muted);font-weight:500;font-style:italic;margin:12px 0 7px;cursor:pointer;}
+  .cat-group-label{font-size:12px;color:var(--muted);font-weight:500;font-style:italic;margin:12px 0 7px;}
   .cat-group-label:first-of-type{margin-top:8px;}
   .cat-group-hint{font-size:10px;color:var(--muted);font-weight:500;text-transform:none;letter-spacing:0;}
   .chip-divider{width:1px;align-self:stretch;background:var(--line);margin:2px 2px;}
@@ -247,13 +247,13 @@
   .budget-bottom b{font-weight:700;}
 
   /* ---------- day-of-month log chart ---------- */
-  .day-chart-bars{display:flex;align-items:flex-end;gap:4px;min-height:88px;padding:0 2px;}
+  .day-chart-bars{display:flex;align-items:flex-end;gap:3px;min-height:88px;padding:0 2px;}
   .day-chart-col{display:flex;flex-direction:column;align-items:center;flex-shrink:0;}
   .day-chart-pair{display:flex;align-items:flex-end;gap:2px;height:68px;}
   .day-bar{width:4px;border-radius:3px 3px 1px 1px;}
   .day-bar-out{background:var(--red);}
   .day-bar-in{background:var(--green);}
-  .day-chart-lbl{font-size:7.5px;color:var(--muted);margin-top:5px;font-weight:600;}
+  .day-chart-lbl{font-size:7px;color:var(--muted);margin-top:5px;font-weight:600;white-space:nowrap;}
   .day-chart-legend{display:flex;gap:16px;margin-top:14px;padding:0 4px;font-size:11.5px;color:var(--ink-soft);font-weight:600;}
   .day-chart-legend span{display:flex;align-items:center;gap:6px;}
   .chart-tooltip{
@@ -1276,7 +1276,7 @@
     </div>`;
 
     const totalDays = daysBetween(range.start, range.end) + 1;
-    const grouped = totalDays > 45;
+    const grouped = totalDays > 15;
     const bucketDays = [];
     if(!grouped){
       for(let i=0;i<totalDays;i++) bucketDays.push({ label: String(new Date(addDays(range.start,i)+'T00:00:00').getDate()), start: addDays(range.start,i), end: addDays(range.start,i) });
@@ -1441,20 +1441,22 @@
       renderDashboard();
     }
     document.getElementById('filtersToggle').onclick = ()=>{ dashFiltersOpen = !dashFiltersOpen; renderDashboard(); };
-    document.querySelectorAll('.tipo-chip').forEach(c=>{ c.onclick = ()=> toggleChip(dashFilters.types, c.dataset.val); });
-    document.querySelectorAll('#chipAcc .fchip').forEach(c=>{ c.onclick = ()=> toggleChip(dashFilters.accounts, c.dataset.val); });
-    document.querySelectorAll('#chipCatGasto .fchip, #chipCatIngreso .fchip').forEach(c=>{ c.onclick = ()=> toggleChip(dashFilters.categories, c.dataset.val); });
-    document.querySelectorAll('.cat-group-label').forEach(el=>{
-      el.onclick = ()=>{
-        const group = el.dataset.catgroup;
-        const list = group==='gasto' ? state.categories : state.incomeCategories;
-        const allSelected = list.length>0 && list.every(c=>dashFilters.categories.has(c));
-        if(allSelected) list.forEach(c=>dashFilters.categories.delete(c));
-        else list.forEach(c=>dashFilters.categories.add(c));
+    document.querySelectorAll('.tipo-chip').forEach(c=>{
+      c.onclick = ()=>{
+        const val = c.dataset.val;
+        if(dashFilters.types.has(val)) dashFilters.types.delete(val); else dashFilters.types.add(val);
+        if(val==='Gasto' || val==='Ingreso'){
+          const list = val==='Gasto' ? state.categories : state.incomeCategories;
+          const allSelected = list.length>0 && list.every(c2=>dashFilters.categories.has(c2));
+          if(allSelected) list.forEach(c2=>dashFilters.categories.delete(c2));
+          else list.forEach(c2=>dashFilters.categories.add(c2));
+        }
         presetActive = false;
         renderDashboard();
       };
     });
+    document.querySelectorAll('#chipAcc .fchip').forEach(c=>{ c.onclick = ()=> toggleChip(dashFilters.accounts, c.dataset.val); });
+    document.querySelectorAll('#chipCatGasto .fchip, #chipCatIngreso .fchip').forEach(c=>{ c.onclick = ()=> toggleChip(dashFilters.categories, c.dataset.val); });
     const presetChip = document.getElementById('presetChip');
     if(presetChip) presetChip.onclick = ()=>{
       if(presetActive){
