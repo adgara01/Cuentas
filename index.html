@@ -1530,10 +1530,10 @@
   function buildSavingsEvolutionChart(months){
     const accRem = state.accounts.find(a=>a.id==='remunerada') || state.accounts.find(a=>a.type==='ahorro' && !a.manual);
     if(!accRem || !months.length){ lastSavingsChart = null; return ''; }
-    // "previsto": en la posición del periodo m se muestra lo acumulado ANTES de que llegue la nómina de m
-    // (la nómina de m se cobra el día de pago DENTRO de m, así que su aportación se ve reflejada en el periodo siguiente)
+    // "previsto": la nómina de un periodo se cobra el día 1 de ESE MISMO periodo (el día de cobro de Ajustes),
+    // así que su aportación ya cuenta desde el principio del propio periodo, sin retraso.
     let cum = accRem.initial;
-    const planned = months.map(m=>{ const val = cum; cum += goalAmountForMonth(m); return val; });
+    const planned = months.map(m=>{ cum += goalAmountForMonth(m); return cum; });
     const todayM = nominaCurrentLabelMonth();
     const real = months.map(m=>{
       if(m > todayM) return null;
