@@ -444,7 +444,7 @@
   let dashFilters = { types: new Set(), accounts: new Set(), categories: new Set(), dateMode:'nomina', nominaLabelMonth:null, customStart:null, customEnd:null };
   let dashFiltersOpen = false;
   let presetActive = false;
-  let ajustesOpen = { payday:true, prevision:true, logGasto:false, logIngreso:false, categorias:false, grupos:false, preset:false, cuentas:false, cuentasEditar:false, sync:true, export:false };
+  let ajustesOpen = { cuentasEditar:false, cuentas:false, categorias:false, grupos:false, payday:true, prevision:true, preset:false, logGasto:false, logIngreso:false, sync:true, export:false };
 
   const $app = document.getElementById('app');
   const $overlay = document.getElementById('overlay');
@@ -1101,12 +1101,10 @@
     function transactableAccounts(){ return state.accounts.filter(a=>!a.manual); }
     function categoryList(){ return type==='Ingreso' ? state.incomeCategories : state.categories; }
     function categoryChipsHtml(){
-      return categoryList().map(c=>`<div class="chip ${c===category?'active':''}" data-cat="${c}">${c}</div>`).join('') +
-        `<div class="chip add-chip" id="addCatChip">+ nueva</div>`;
+      return categoryList().map(c=>`<div class="chip ${c===category?'active':''}" data-cat="${c}">${c}</div>`).join('');
     }
     function accountOptionsHtml(sel, excludeId){
-      return transactableAccounts().filter(a=>a.id!==excludeId).map(a=>`<option value="${a.id}" ${a.id===sel?'selected':''}>${a.name}</option>`).join('') +
-        `<option value="__add__">+ nueva cuenta…</option>`;
+      return transactableAccounts().filter(a=>a.id!==excludeId).map(a=>`<option value="${a.id}" ${a.id===sel?'selected':''}>${a.name}</option>`).join('');
     }
     function historyHtml(){
       const tx = [...state.transactions].sort((a,b)=> b.date.localeCompare(a.date) || b.id.localeCompare(a.id)).slice(0,25);
@@ -1185,18 +1183,7 @@
         const el = document.getElementById(elId);
         if(!el) return;
         el.onchange = (e)=>{
-          if(e.target.value==='__add__'){
-            const name = prompt('Nombre de la nueva cuenta:');
-            if(name && name.trim()){
-              const newAcc = {id:uid(), name:name.trim(), type:'corriente', manual:false, initial:0, manualBalance:0, expected:0};
-              state.accounts.push(newAcc);
-              saveState();
-              if(isTo) toAccount = newAcc.id; else account = newAcc.id;
-            }
-            draw();
-          } else {
-            if(isTo) toAccount = e.target.value; else account = e.target.value;
-          }
+          if(isTo) toAccount = e.target.value; else account = e.target.value;
         };
       }
       bindAccountSelect('tx-account', false);
@@ -1209,16 +1196,6 @@
           chip.classList.add('active');
         };
       });
-      const addCat = document.getElementById('addCatChip');
-      if(addCat) addCat.onclick = ()=>{
-        const name = prompt('Nueva categoría:');
-        if(name && name.trim()){
-          categoryList().push(name.trim());
-          category = name.trim();
-          saveState();
-          draw();
-        }
-      };
 
       document.getElementById('txSave').onclick = async ()=>{
         const amount = parseFloat(document.getElementById('tx-amount').value);
@@ -1736,6 +1713,58 @@
 
     let html = headerHtml('Objetivos y ajustes');
 
+    html += collapsibleCard('cuentasEditar', 'Cuentas', `
+      <div class="empty-note" style="padding:0 0 12px;text-align:left;">Toca el nombre para cambiarlo, o crea cuentas nuevas — automáticas (se calculan solas) o manuales (las actualizas tú).</div>
+      ${state.accounts.map(a=>`
+        <div class="acc-manage-row">
+          <div class="acc-name-btn" data-acc="${a.id}">${a.name} <span style="color:var(--muted);">✎</span></div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div class="am-type">${a.manual?'manual':a.type}</div>
+            <span class="row-del acc-del-btn" data-acc="${a.id}">✕</span>
+          </div>
+        </div>
+      `).join('')}
+      <button class="btn-ghost" id="addAccBtn" style="margin-top:6px;">+ Añadir cuenta</button>
+    `);
+
+    html += collapsibleCard('cuentas', 'Punto de partida', `
+      <div class="empty-note" style="padding:0 0 12px;text-align:left;">El saldo desde el que empieza a calcular cada cuenta.</div>
+      ${state.accounts.map(a=>`
+        <div class="acc-manage-row">
+          <div><div class="am-name">${a.name}</div><div class="am-type">${a.manual?'manual':a.type} · ${a.manual?'valor actual':'saldo inicial'} ${fmt(a.manual?a.manualBalance:a.initial)}€</div></div>
+          <input type="number" step="0.01" data-acc="${a.id}" class="${a.manual?'manual-input':'init-input'}" value="${a.manual?a.manualBalance:a.initial}">
+        </div>
+      `).join('')}
+    `);
+
+    html += collapsibleCard('categorias', 'Categorías', `
+      <div class="empty-note" style="padding:0 0 10px;text-align:left;">Toca una para cambiarle el nombre. El número de categorías se mantiene siempre.</div>
+      <div class="filter-label">Gastos</div>
+      <div class="filter-chip-row" id="renameGastoChips">
+        ${state.categories.map((c,i)=>`<div class="fchip" data-list="categories" data-idx="${i}">${c}</div>`).join('')}
+      </div>
+      <div class="filter-label" style="margin-top:14px;">Ingresos</div>
+      <div class="filter-chip-row" id="renameIngresoChips">
+        ${state.incomeCategories.map((c,i)=>`<div class="fchip" data-list="incomeCategories" data-idx="${i}">${c}</div>`).join('')}
+      </div>
+    `);
+
+    html += collapsibleCard('grupos', 'Agrupaciones de gastos', `
+      <div class="empty-note" style="padding:0 0 14px;text-align:left;">Así se agrupan tus categorías en el gráfico "Gastos por grupo" de Resumen. Lo que no metas en ningún grupo cae en "Otros".</div>
+      ${state.expenseGroups.map((g,gi)=>`
+        <div class="group-edit-block">
+          <div class="compact-row" style="margin-bottom:10px;">
+            <div class="group-name-btn" data-gidx="${gi}">${g.name} <span style="color:var(--muted);">✎</span></div>
+            <span class="row-del group-del-btn" data-gidx="${gi}">✕</span>
+          </div>
+          <div class="filter-chip-row">
+            ${state.categories.map(c=>`<div class="fchip group-cat-chip ${g.categories.includes(c)?'active':''}" data-gidx="${gi}" data-cat="${c}">${c}</div>`).join('')}
+          </div>
+        </div>
+      `).join('') || '<div class="empty-note">Sin agrupaciones todavía.</div>'}
+      <button class="btn-ghost" id="addGroupBtn" style="margin-top:6px;">+ Nueva agrupación</button>
+    `);
+
     html += collapsibleCard('payday', 'Día de cobro', `
       <div class="compact-row">
         <div style="flex:1;min-width:0;">
@@ -1769,6 +1798,22 @@
       </table></div>
     `);
 
+    html += collapsibleCard('preset', 'Preset de filtros', `
+      <div class="empty-note" style="padding:0 0 14px;text-align:left;">Combinación de filtros que aparece como botón rápido junto a "Tipo" en el Dashboard.</div>
+      <div class="filter-label" style="margin-top:0;">Tipo</div>
+      <div class="filter-chip-row">
+        ${['Gasto','Ingreso','Movimiento'].map(t=>`<div class="fchip preset-edit-chip ${state.filterPreset.types.includes(t)?'active':''}" data-field="types" data-val="${t}">${t}</div>`).join('')}
+      </div>
+      <div class="filter-label">Cuenta</div>
+      <div class="filter-chip-row">
+        ${state.accounts.filter(a=>!a.manual).map(a=>`<div class="fchip preset-edit-chip ${state.filterPreset.accounts.includes(a.id)?'active':''}" data-field="accounts" data-val="${a.id}">${a.name}</div>`).join('')}
+      </div>
+      <div class="filter-label">Categoría</div>
+      <div class="filter-chip-row">
+        ${[...state.categories, ...state.incomeCategories].map(c=>`<div class="fchip preset-edit-chip ${state.filterPreset.categories.includes(c)?'active':''}" data-field="categories" data-val="${c}">${c}</div>`).join('')}
+      </div>
+    `);
+
     html += collapsibleCard('logGasto', 'Log mensual por categoría (gastos)', `
       <div class="pivot-wrap"><table class="pivot">
         <thead><tr><th>Categoría</th>${planMonths.map(m=>`<th>${monthLabel(m)}</th>`).join('')}</tr></thead>
@@ -1797,71 +1842,6 @@
           }).join('')}
         </tbody>
       </table></div>
-    `);
-
-    html += collapsibleCard('categorias', 'Categorías', `
-      <div class="empty-note" style="padding:0 0 10px;text-align:left;">Toca una para cambiarle el nombre. El número de categorías se mantiene siempre.</div>
-      <div class="filter-label">Gastos</div>
-      <div class="filter-chip-row" id="renameGastoChips">
-        ${state.categories.map((c,i)=>`<div class="fchip" data-list="categories" data-idx="${i}">${c}</div>`).join('')}
-      </div>
-      <div class="filter-label" style="margin-top:14px;">Ingresos</div>
-      <div class="filter-chip-row" id="renameIngresoChips">
-        ${state.incomeCategories.map((c,i)=>`<div class="fchip" data-list="incomeCategories" data-idx="${i}">${c}</div>`).join('')}
-      </div>
-    `);
-
-    html += collapsibleCard('grupos', 'Agrupaciones de gastos', `
-      <div class="empty-note" style="padding:0 0 14px;text-align:left;">Así se agrupan tus categorías en el gráfico "Gastos por grupo" de Resumen. Lo que no metas en ningún grupo cae en "Otros".</div>
-      ${state.expenseGroups.map((g,gi)=>`
-        <div class="group-edit-block">
-          <div class="compact-row" style="margin-bottom:10px;">
-            <div class="group-name-btn" data-gidx="${gi}">${g.name} <span style="color:var(--muted);">✎</span></div>
-            <span class="row-del group-del-btn" data-gidx="${gi}">✕</span>
-          </div>
-          <div class="filter-chip-row">
-            ${state.categories.map(c=>`<div class="fchip group-cat-chip ${g.categories.includes(c)?'active':''}" data-gidx="${gi}" data-cat="${c}">${c}</div>`).join('')}
-          </div>
-        </div>
-      `).join('') || '<div class="empty-note">Sin agrupaciones todavía.</div>'}
-      <button class="btn-ghost" id="addGroupBtn" style="margin-top:6px;">+ Nueva agrupación</button>
-    `);
-
-    html += collapsibleCard('preset', 'Preset de filtros', `
-      <div class="empty-note" style="padding:0 0 14px;text-align:left;">Combinación de filtros que aparece como botón rápido junto a "Tipo" en el Dashboard.</div>
-      <div class="filter-label" style="margin-top:0;">Tipo</div>
-      <div class="filter-chip-row">
-        ${['Gasto','Ingreso','Movimiento'].map(t=>`<div class="fchip preset-edit-chip ${state.filterPreset.types.includes(t)?'active':''}" data-field="types" data-val="${t}">${t}</div>`).join('')}
-      </div>
-      <div class="filter-label">Cuenta</div>
-      <div class="filter-chip-row">
-        ${state.accounts.filter(a=>!a.manual).map(a=>`<div class="fchip preset-edit-chip ${state.filterPreset.accounts.includes(a.id)?'active':''}" data-field="accounts" data-val="${a.id}">${a.name}</div>`).join('')}
-      </div>
-      <div class="filter-label">Categoría</div>
-      <div class="filter-chip-row">
-        ${[...state.categories, ...state.incomeCategories].map(c=>`<div class="fchip preset-edit-chip ${state.filterPreset.categories.includes(c)?'active':''}" data-field="categories" data-val="${c}">${c}</div>`).join('')}
-      </div>
-    `);
-
-    html += collapsibleCard('cuentas', 'Punto de partida', `
-      <div class="empty-note" style="padding:0 0 12px;text-align:left;">El saldo desde el que empieza a calcular cada cuenta.</div>
-      ${state.accounts.map(a=>`
-        <div class="acc-manage-row">
-          <div><div class="am-name">${a.name}</div><div class="am-type">${a.manual?'manual':a.type} · ${a.manual?'valor actual':'saldo inicial'} ${fmt(a.manual?a.manualBalance:a.initial)}€</div></div>
-          <input type="number" step="0.01" data-acc="${a.id}" class="${a.manual?'manual-input':'init-input'}" value="${a.manual?a.manualBalance:a.initial}">
-        </div>
-      `).join('')}
-    `);
-
-    html += collapsibleCard('cuentasEditar', 'Cuentas', `
-      <div class="empty-note" style="padding:0 0 12px;text-align:left;">Toca el nombre para cambiarlo, o crea cuentas nuevas — automáticas (se calculan solas) o manuales (las actualizas tú).</div>
-      ${state.accounts.map(a=>`
-        <div class="acc-manage-row">
-          <div class="acc-name-btn" data-acc="${a.id}">${a.name} <span style="color:var(--muted);">✎</span></div>
-          <div class="am-type">${a.manual?'manual':a.type}</div>
-        </div>
-      `).join('')}
-      <button class="btn-ghost" id="addAccBtn" style="margin-top:6px;">+ Añadir cuenta</button>
     `);
 
     html += collapsibleCard('sync', 'Sincronización en la nube', state.syncCode ? `
@@ -1997,6 +1977,22 @@
         if(!newName || !newName.trim() || newName.trim()===acc.name) return;
         acc.name = newName.trim();
         saveState();
+        renderAjustes();
+      };
+    });
+    $app.querySelectorAll('.acc-del-btn').forEach(el=>{
+      el.onclick = ()=>{
+        const acc = state.accounts.find(a=>a.id===el.dataset.acc);
+        if(!acc) return;
+        if(state.accounts.length<=1){ showToast('Necesitas al menos una cuenta'); return; }
+        const linked = state.transactions.filter(t=>t.account===acc.id || t.toAccount===acc.id).length;
+        const msg = linked>0
+          ? '¿Eliminar "'+acc.name+'"? Tiene '+linked+' movimiento(s) asociados que se quedarán apuntando a una cuenta que ya no existe.'
+          : '¿Eliminar "'+acc.name+'"?';
+        if(!confirm(msg)) return;
+        state.accounts = state.accounts.filter(a=>a.id!==acc.id);
+        saveState();
+        showToast('Cuenta eliminada');
         renderAjustes();
       };
     });
