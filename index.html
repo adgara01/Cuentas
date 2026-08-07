@@ -201,6 +201,12 @@
     background:var(--bg);border:none;border-radius:999px;padding:8px 14px;color:var(--ink);font-weight:700;
   }
   .filter-label{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:700;margin:12px 0 7px;}
+  .cat-group-label{font-size:12px;color:var(--ink);font-weight:700;margin:12px 0 7px;cursor:pointer;}
+  .cat-group-label:first-of-type{margin-top:8px;}
+  .cat-group-hint{font-size:10px;color:var(--muted);font-weight:500;text-transform:none;letter-spacing:0;}
+  .preset-divider{height:1px;background:var(--line);margin:14px 0;}
+  .preset-chip{background:var(--green-bg);color:var(--green);border:1px dashed var(--green);}
+  .preset-chip.active{background:var(--green);color:#fff;}
   .filter-label:first-of-type{margin-top:0;}
   .clear-filters{font-size:11.5px;text-transform:none;letter-spacing:0;color:var(--red);font-weight:700;cursor:pointer;}
   .filter-chip-row{display:flex;flex-wrap:wrap;gap:7px;}
@@ -426,6 +432,7 @@
       {id:'g-vacaciones', name:'Vacaciones', categories:['Vacaciones']},
       {id:'g-adricova', name:'Adri Cova', categories:['Adri Cova']}
     ],
+    filterPresets: [],
     syncCode: '',
     _updatedAt: 0
   };
@@ -435,7 +442,7 @@
   let privacyMode = true; // oculta el total y el ahorro por defecto en cada apertura; no se guarda entre sesiones
   let dashFilters = { types: new Set(), accounts: new Set(), categories: new Set(), dateMode:'nomina', nominaLabelMonth:null, customStart:null, customEnd:null };
   let dashFiltersOpen = false;
-  let ajustesOpen = { payday:true, prevision:true, logGasto:false, logIngreso:false, categorias:false, grupos:false, cuentas:false, sync:true, export:false };
+  let ajustesOpen = { payday:true, prevision:true, logGasto:false, logIngreso:false, categorias:false, grupos:false, presets:false, cuentas:false, sync:true, export:false };
 
   const $app = document.getElementById('app');
   const $overlay = document.getElementById('overlay');
@@ -480,6 +487,7 @@
             {id:'g-adricova', name: state.categories[9]||'Adri Cova', categories:[state.categories[9]].filter(Boolean)}
           ];
         }
+        if(!state.filterPresets) state.filterPresets = [];
         state.accounts.forEach(a=>{ if(a.manualBalance===undefined) a.manualBalance = 0; if(a.manual===undefined) a.manual=false; });
       }
     }catch(e){ /* first run */ }
@@ -1239,7 +1247,6 @@
 
   // ================= DASHBOARD =================
   function renderDashboard(){
-    const allCats = Array.from(new Set([...state.categories,...state.incomeCategories,'Ahorro','Transferencia']));
     const range = resolveDateRange(dashFilters);
 
     function chipRow(id, items, selectedSet, getLabel){
@@ -1367,10 +1374,22 @@
         <div style="text-align:right;margin-bottom:6px;"><span class="clear-filters" id="clearFilters">limpiar</span></div>
         <div class="filter-label" style="margin-top:4px;">Tipo</div>
         ${chipRow('chipTipo', ['Gasto','Ingreso','Movimiento'], dashFilters.types)}
+        ${state.filterPresets.length ? `
+          <div class="preset-divider"></div>
+          <div class="filter-label">Presets</div>
+          <div class="filter-chip-row" id="presetChipRow">
+            ${state.filterPresets.map(p=>`<div class="fchip preset-chip" data-preset="${p.id}">${p.name}</div>`).join('')}
+          </div>
+        ` : ''}
         <div class="filter-label">Cuenta</div>
-        ${chipRow('chipAcc', state.accounts.map(a=>a.id), dashFilters.accounts, id=>accName(id))}
+        ${chipRow('chipAcc', state.accounts.filter(a=>!a.manual).map(a=>a.id), dashFilters.accounts, id=>accName(id))}
         <div class="filter-label">Categoría</div>
-        ${chipRow('chipCat', allCats, dashFilters.categories)}
+        <div class="cat-group-label" data-catgroup="gasto">Gasto <span class="cat-group-hint">(toca para marcar todas)</span></div>
+        ${chipRow('chipCatGasto', state.categories, dashFilters.categories)}
+        <div class="cat-group-label" data-catgroup="ingreso">Ingreso <span class="cat-group-hint">(toca para marcar todas)</span></div>
+        ${chipRow('chipCatIngreso', state.incomeCategories, dashFilters.categories)}
+        <div class="cat-group-label" data-catgroup="movimiento">Movimiento <span class="cat-group-hint">(toca para marcar todas)</span></div>
+        ${chipRow('chipCatMov', ['Ahorro','Transferencia'], dashFilters.categories)}
         <div class="filter-label">Periodo</div>
         <div class="seg" id="dateModeSeg">
           <button data-m="todo" class="${dashFilters.dateMode==='todo'?'active':''}">Todo</button>
@@ -1443,7 +1462,25 @@
     document.getElementById('filtersToggle').onclick = ()=>{ dashFiltersOpen = !dashFiltersOpen; renderDashboard(); };
     document.querySelectorAll('#chipTipo .fchip').forEach(c=>{ c.onclick = ()=> toggleChip(dashFilters.types, c.dataset.val); });
     document.querySelectorAll('#chipAcc .fchip').forEach(c=>{ c.onclick = ()=> toggleChip(dashFilters.accounts, c.dataset.val); });
-    document.querySelectorAll('#chipCat .fchip').forEach(c=>{ c.onclick = ()=> toggleChip(dashFilters.categories, c.dataset.val); });
+    document.querySelectorAll('#chipCatGasto .fchip, #chipCatIngreso .fchip, #chipCatMov .fchip').forEach(c=>{ c.onclick = ()=> toggleChip(dashFilters.categories, c.dataset.val); });
+    document.querySelectorAll('.cat-group-label').forEach(el=>{
+      el.onclick = ()=>{
+        const group = el.dataset.catgroup;
+        const list = group==='gasto' ? state.categories : group==='ingreso' ? state.incomeCategories : ['Ahorro','Transferencia'];
+        list.forEach(c=>dashFilters.categories.add(c));
+        renderDashboard();
+      };
+    });
+    document.querySelectorAll('.preset-chip').forEach(el=>{
+      el.onclick = ()=>{
+        const preset = state.filterPresets.find(p=>p.id===el.dataset.preset);
+        if(!preset) return;
+        dashFilters.types = new Set(preset.types||[]);
+        dashFilters.accounts = new Set(preset.accounts||[]);
+        dashFilters.categories = new Set(preset.categories||[]);
+        renderDashboard();
+      };
+    });
     document.querySelectorAll('#dateModeSeg button').forEach(b=>{
       b.onclick = ()=>{ dashFilters.dateMode = b.dataset.m; renderDashboard(); };
     });
@@ -1777,6 +1814,31 @@
       <button class="btn-ghost" id="addGroupBtn" style="margin-top:6px;">+ Nueva agrupación</button>
     `);
 
+    html += collapsibleCard('presets', 'Presets de filtros', `
+      <div class="empty-note" style="padding:0 0 14px;text-align:left;">Combinaciones de filtros que aparecen como botón rápido junto a "Tipo" en el Dashboard.</div>
+      ${state.filterPresets.map((p,pi)=>`
+        <div class="group-edit-block">
+          <div class="compact-row" style="margin-bottom:10px;">
+            <div class="preset-name-btn" data-pidx="${pi}">${p.name} <span style="color:var(--muted);">✎</span></div>
+            <span class="row-del preset-del-btn" data-pidx="${pi}">✕</span>
+          </div>
+          <div class="filter-label" style="margin-top:0;">Tipo</div>
+          <div class="filter-chip-row">
+            ${['Gasto','Ingreso','Movimiento'].map(t=>`<div class="fchip preset-edit-chip" data-pidx="${pi}" data-field="types" data-val="${t}" ${p.types&&p.types.includes(t)?'style="background:var(--ink);color:#fff;"':''}>${t}</div>`).join('')}
+          </div>
+          <div class="filter-label">Cuenta</div>
+          <div class="filter-chip-row">
+            ${state.accounts.filter(a=>!a.manual).map(a=>`<div class="fchip preset-edit-chip" data-pidx="${pi}" data-field="accounts" data-val="${a.id}" ${p.accounts&&p.accounts.includes(a.id)?'style="background:var(--ink);color:#fff;"':''}>${a.name}</div>`).join('')}
+          </div>
+          <div class="filter-label">Categoría</div>
+          <div class="filter-chip-row">
+            ${[...state.categories, ...state.incomeCategories, 'Ahorro','Transferencia'].map(c=>`<div class="fchip preset-edit-chip" data-pidx="${pi}" data-field="categories" data-val="${c}" ${p.categories&&p.categories.includes(c)?'style="background:var(--ink);color:#fff;"':''}>${c}</div>`).join('')}
+          </div>
+        </div>
+      `).join('') || '<div class="empty-note">Sin presets todavía.</div>'}
+      <button class="btn-ghost" id="addPresetBtn" style="margin-top:6px;">+ Nuevo preset</button>
+    `);
+
     html += collapsibleCard('cuentas', 'Cuentas', `
       ${state.accounts.map(a=>`
         <div class="acc-manage-row">
@@ -1974,6 +2036,49 @@
       showToast('Agrupación creada — toca sus categorías para añadirlas');
       renderAjustes();
     };
+    const addPresetBtn = document.getElementById('addPresetBtn');
+    if(addPresetBtn) addPresetBtn.onclick = ()=>{
+      const name = prompt('Nombre del preset:');
+      if(!name || !name.trim()) return;
+      state.filterPresets.push({id:uid(), name:name.trim(), types:[], accounts:[], categories:[]});
+      saveState();
+      showToast('Preset creado — toca sus filtros para configurarlo');
+      renderAjustes();
+    };
+    $app.querySelectorAll('.preset-name-btn').forEach(el=>{
+      el.onclick = ()=>{
+        const pi = parseInt(el.dataset.pidx,10);
+        const p = state.filterPresets[pi];
+        const newName = prompt('Nombre del preset:', p.name);
+        if(!newName || !newName.trim()) return;
+        p.name = newName.trim();
+        saveState();
+        renderAjustes();
+      };
+    });
+    $app.querySelectorAll('.preset-del-btn').forEach(el=>{
+      el.onclick = ()=>{
+        const pi = parseInt(el.dataset.pidx,10);
+        const p = state.filterPresets[pi];
+        if(!confirm('¿Eliminar el preset "'+p.name+'"?')) return;
+        state.filterPresets.splice(pi,1);
+        saveState();
+        renderAjustes();
+      };
+    });
+    $app.querySelectorAll('.preset-edit-chip').forEach(el=>{
+      el.onclick = ()=>{
+        const pi = parseInt(el.dataset.pidx,10);
+        const field = el.dataset.field;
+        const val = el.dataset.val;
+        const p = state.filterPresets[pi];
+        if(!p[field]) p[field] = [];
+        if(p[field].includes(val)) p[field] = p[field].filter(v=>v!==val);
+        else p[field].push(val);
+        saveState();
+        renderAjustes();
+      };
+    });
     document.getElementById('exportBtn').onclick = ()=>{
       const emailInput = document.getElementById('exportEmail');
       const email = emailInput.value.trim();
