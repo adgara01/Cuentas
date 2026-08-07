@@ -201,7 +201,7 @@
     background:var(--bg);border:none;border-radius:999px;padding:8px 14px;color:var(--ink);font-weight:700;
   }
   .filter-label{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:700;margin:12px 0 7px;}
-  .cat-group-label{font-size:12px;color:var(--ink);font-weight:700;margin:12px 0 7px;cursor:pointer;}
+  .cat-group-label{font-size:12px;color:var(--muted);font-weight:500;font-style:italic;margin:12px 0 7px;cursor:pointer;}
   .cat-group-label:first-of-type{margin-top:8px;}
   .cat-group-hint{font-size:10px;color:var(--muted);font-weight:500;text-transform:none;letter-spacing:0;}
   .chip-divider{width:1px;align-self:stretch;background:var(--line);margin:2px 2px;}
@@ -358,6 +358,7 @@
   .group-edit-block{padding:12px 0;border-top:1px solid var(--line);}
   .group-edit-block:first-child{border-top:none;padding-top:0;}
   .group-name-btn{font-weight:700;font-size:14px;cursor:pointer;color:var(--ink);}
+  .acc-name-btn{font-weight:700;font-size:13.5px;cursor:pointer;color:var(--ink);}
   .row-del{color:var(--muted);font-size:15px;cursor:pointer;padding:2px 6px;}
   .acc-manage-row input{
     width:96px;text-align:right;font-size:13px;
@@ -442,7 +443,8 @@
   let privacyMode = true; // oculta el total y el ahorro por defecto en cada apertura; no se guarda entre sesiones
   let dashFilters = { types: new Set(), accounts: new Set(), categories: new Set(), dateMode:'nomina', nominaLabelMonth:null, customStart:null, customEnd:null };
   let dashFiltersOpen = false;
-  let ajustesOpen = { payday:true, prevision:true, logGasto:false, logIngreso:false, categorias:false, grupos:false, preset:false, cuentas:false, sync:true, export:false };
+  let presetActive = false;
+  let ajustesOpen = { payday:true, prevision:true, logGasto:false, logIngreso:false, categorias:false, grupos:false, preset:false, cuentas:false, cuentasEditar:false, sync:true, export:false };
 
   const $app = document.getElementById('app');
   const $overlay = document.getElementById('overlay');
@@ -1381,7 +1383,7 @@
           ${['Gasto','Ingreso','Movimiento'].map(it=>`<div class="fchip tipo-chip ${dashFilters.types.has(it)?'active':''}" data-val="${it}">${it}</div>`).join('')}
           ${(state.filterPreset.types.length||state.filterPreset.accounts.length||state.filterPreset.categories.length) ? `
             <span class="chip-divider"></span>
-            <div class="fchip preset-chip" id="presetChip">Preset</div>
+            <div class="fchip preset-chip ${presetActive?'active':''}" id="presetChip">Preset</div>
           ` : ''}
         </div>
         <div class="filter-label">Cuenta</div>
@@ -1458,6 +1460,7 @@
 
     function toggleChip(setRef, val){
       if(setRef.has(val)) setRef.delete(val); else setRef.add(val);
+      presetActive = false;
       renderDashboard();
     }
     document.getElementById('filtersToggle').onclick = ()=>{ dashFiltersOpen = !dashFiltersOpen; renderDashboard(); };
@@ -1471,14 +1474,23 @@
         const allSelected = list.length>0 && list.every(c=>dashFilters.categories.has(c));
         if(allSelected) list.forEach(c=>dashFilters.categories.delete(c));
         else list.forEach(c=>dashFilters.categories.add(c));
+        presetActive = false;
         renderDashboard();
       };
     });
     const presetChip = document.getElementById('presetChip');
     if(presetChip) presetChip.onclick = ()=>{
-      dashFilters.types = new Set(state.filterPreset.types||[]);
-      dashFilters.accounts = new Set(state.filterPreset.accounts||[]);
-      dashFilters.categories = new Set(state.filterPreset.categories||[]);
+      if(presetActive){
+        dashFilters.types = new Set();
+        dashFilters.accounts = new Set();
+        dashFilters.categories = new Set();
+        presetActive = false;
+      } else {
+        dashFilters.types = new Set(state.filterPreset.types||[]);
+        dashFilters.accounts = new Set(state.filterPreset.accounts||[]);
+        dashFilters.categories = new Set(state.filterPreset.categories||[]);
+        presetActive = true;
+      }
       renderDashboard();
     };
     document.querySelectorAll('#dateModeSeg button').forEach(b=>{
@@ -1490,6 +1502,7 @@
     const clearBtn = document.getElementById('clearFilters');
     if(clearBtn) clearBtn.onclick = ()=>{
       dashFilters = { types:new Set(), accounts:new Set(), categories:new Set(), dateMode:'nomina', nominaLabelMonth:null, customStart:null, customEnd:null };
+      presetActive = false;
       renderDashboard();
     };
     $app.querySelectorAll('.mv-line').forEach(el=>{ el.onclick = ()=> openEditSheet(el.dataset.id, renderDashboard); });
@@ -1830,14 +1843,25 @@
       </div>
     `);
 
-    html += collapsibleCard('cuentas', 'Cuentas', `
+    html += collapsibleCard('cuentas', 'Punto de partida', `
+      <div class="empty-note" style="padding:0 0 12px;text-align:left;">El saldo desde el que empieza a calcular cada cuenta.</div>
       ${state.accounts.map(a=>`
         <div class="acc-manage-row">
           <div><div class="am-name">${a.name}</div><div class="am-type">${a.manual?'manual':a.type} · ${a.manual?'valor actual':'saldo inicial'} ${fmt(a.manual?a.manualBalance:a.initial)}€</div></div>
           <input type="number" step="0.01" data-acc="${a.id}" class="${a.manual?'manual-input':'init-input'}" value="${a.manual?a.manualBalance:a.initial}">
         </div>
       `).join('')}
-      <button class="btn-ghost" id="addAccBtn">+ Añadir cuenta</button>
+    `);
+
+    html += collapsibleCard('cuentasEditar', 'Cuentas', `
+      <div class="empty-note" style="padding:0 0 12px;text-align:left;">Toca el nombre para cambiarlo, o crea cuentas nuevas — automáticas (se calculan solas) o manuales (las actualizas tú).</div>
+      ${state.accounts.map(a=>`
+        <div class="acc-manage-row">
+          <div class="acc-name-btn" data-acc="${a.id}">${a.name} <span style="color:var(--muted);">✎</span></div>
+          <div class="am-type">${a.manual?'manual':a.type}</div>
+        </div>
+      `).join('')}
+      <button class="btn-ghost" id="addAccBtn" style="margin-top:6px;">+ Añadir cuenta</button>
     `);
 
     html += collapsibleCard('sync', 'Sincronización en la nube', state.syncCode ? `
@@ -1965,6 +1989,17 @@
       state.accounts.push({id:uid(), name:name.trim(), type:isAhorro?'ahorro':'corriente', manual:isManual, initial:0, manualBalance:0, expected:0});
       saveState(); renderAjustes();
     };
+    $app.querySelectorAll('.acc-name-btn').forEach(el=>{
+      el.onclick = ()=>{
+        const acc = state.accounts.find(a=>a.id===el.dataset.acc);
+        if(!acc) return;
+        const newName = prompt('Nombre de la cuenta:', acc.name);
+        if(!newName || !newName.trim() || newName.trim()===acc.name) return;
+        acc.name = newName.trim();
+        saveState();
+        renderAjustes();
+      };
+    });
     $app.querySelectorAll('#renameGastoChips .fchip, #renameIngresoChips .fchip').forEach(chip=>{
       chip.onclick = ()=>{
         const listName = chip.dataset.list;
