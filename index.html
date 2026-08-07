@@ -434,8 +434,7 @@
   let privacyMode = true; // oculta el total y el ahorro por defecto en cada apertura; no se guarda entre sesiones
   let dashFilters = { types: new Set(), accounts: new Set(), categories: new Set(), dateMode:'nomina', nominaLabelMonth:null, customStart:null, customEnd:null };
   let dashFiltersOpen = false;
-  let ajustesLogGastoOpen = false;
-  let ajustesLogIngresoOpen = false;
+  let ajustesOpen = { payday:true, prevision:true, logGasto:false, logIngreso:false, categorias:false, grupos:false, cuentas:false, sync:true, export:false };
 
   const $app = document.getElementById('app');
   const $overlay = document.getElementById('overlay');
@@ -638,7 +637,7 @@
   function incomeForMonth(m){
     const p = state.monthlyPlans[m];
     if(p && p.income!=null) return p.income;
-    return state.transactions.filter(t=>t.type==='Ingreso' && monthKey(t.date)===m).reduce((s,t)=>s+t.amount,0);
+    return state.transactions.filter(t=>t.type==='Ingreso' && nominaPeriodLabelForDate(t.date)===m).reduce((s,t)=>s+t.amount,0);
   }
   function goalPctForMonth(m){
     const p = state.monthlyPlans[m];
@@ -684,6 +683,45 @@
       }
     });
     return bal;
+  }
+  function ledgerBalanceAsOfDate(accId, cutoffDate){
+    const acc = state.accounts.find(a=>a.id===accId);
+    if(!acc) return 0;
+    let bal = acc.initial;
+    state.transactions.forEach(t=>{
+      if(cutoffDate && t.date > cutoffDate) return;
+      if(t.type==='Ingreso' && t.account===accId) bal += t.amount;
+      else if(t.type==='Gasto' && t.account===accId) bal -= t.amount;
+      else if(t.type==='Movimiento'){
+        if(t.account===accId) bal -= t.amount;
+        if(t.toAccount===accId) bal += t.amount;
+      }
+    });
+    return bal;
+  }
+  // -------- periodos de nómina para los gráficos de Resumen --------
+  function nominaPeriodLabelForDate(dateStr){
+    const p = payPeriodContaining(dateStr, state.paydayDay||1);
+    return monthKey(p.start);
+  }
+  function nominaRangeShort(m){
+    const p = nominaPeriodForLabelMonth(m, state.paydayDay||1);
+    const short = d=>{ const dt=new Date(d+'T00:00:00'); return String(dt.getDate()).padStart(2,'0')+'/'+String(dt.getMonth()+1).padStart(2,'0'); };
+    return short(p.start)+' → '+short(p.end);
+  }
+  function historicNominaPeriods(){
+    const set = new Set(state.transactions.map(t=>nominaPeriodLabelForDate(t.date)));
+    set.add(nominaCurrentLabelMonth());
+    return Array.from(set).sort();
+  }
+  function forecastNominaPeriods(){
+    const periods = historicNominaPeriods();
+    const rangeStart = periods.length ? periods[0] : nominaCurrentLabelMonth();
+    const rollingEnd = (()=>{ let m = nominaCurrentLabelMonth(); for(let i=0;i<11;i++) m = nextMonthKey(m); return m; })();
+    const contiguous = [];
+    let cur = rangeStart; let guard=0;
+    while(cur<=rollingEnd && guard<240){ contiguous.push(cur); cur = nextMonthKey(cur); guard++; }
+    return Array.from(new Set([...contiguous, ...periods, ...Object.keys(state.monthlyPlans)])).sort();
   }
   function currentBalance(accId){
     const acc = state.accounts.find(a=>a.id===accId);
@@ -865,7 +903,7 @@
           const m = d.months[monthIdx];
           const subRows = members.map(cat=>({
             label: cat,
-            amount: state.transactions.filter(t=>t.type===d.txType && monthKey(t.date)===m && t.category===cat).reduce((s,t)=>s+t.amount,0),
+            amount: state.transactions.filter(t=>t.type===d.txType && nominaPeriodLabelForDate(t.date)===m && t.category===cat).reduce((s,t)=>s+t.amount,0),
             color: rows[i].color
           }));
           renderBreakdownRows(chartId, monthIdx, subRows, group);
@@ -887,7 +925,7 @@
     const data = months.map(m=> Object.fromEntries(groups.map(g=>[g, sumFn(m,g)])));
     const totals = data.map(d=>groups.reduce((s,g)=>s+d[g],0));
     const maxTotal = Math.max(...totals,1);
-    const barW = 24, gap=26, H=176, padT=20, padB=28;
+    const barW = 24, gap=26, H=192, padT=20, padB=44;
     const usableH = H-padB-padT;
     const W = Math.max(320, months.length*(barW+gap));
     lastStackedCharts[chartId] = { months, groups, colors, data, membersFn, txType };
@@ -915,7 +953,8 @@
       <div style="overflow-x:auto;">
         <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;">
           ${months.map((m,i)=>barsFor(i)).join('')}
-          ${months.map((m,i)=>`<text x="${(i*(barW+gap)+gap/2+barW/2).toFixed(1)}" y="${H-8}" font-size="9" fill="var(--muted)" text-anchor="middle" style="pointer-events:none;">${monthLabel(m)}</text>`).join('')}
+          ${months.map((m,i)=>`<text x="${(i*(barW+gap)+gap/2+barW/2).toFixed(1)}" y="${H-30}" font-size="9" fill="var(--muted)" text-anchor="middle" style="pointer-events:none;" font-weight="700">${monthLabel(m)}</text>
+          <text x="${(i*(barW+gap)+gap/2+barW/2).toFixed(1)}" y="${H-18}" font-size="7" fill="var(--muted)" text-anchor="middle" style="pointer-events:none;">${nominaRangeShort(m)}</text>`).join('')}
         </svg>
       </div>
       <div class="day-chart-legend" style="margin-top:10px;flex-wrap:wrap;row-gap:6px;">
@@ -938,7 +977,7 @@
     state.expenseGroups.forEach((g,i)=>{ colors[g.name] = palette[i%palette.length]; });
     return buildStackedChart({
       chartId:'gastos', title:'Gastos por grupo — evolución', months, groups, colors, txType:'Gasto',
-      sumFn: (m,g)=> state.transactions.filter(t=>t.type==='Gasto' && monthKey(t.date)===m && categoryGroupFor(t.category)===g).reduce((s,t)=>s+t.amount,0),
+      sumFn: (m,g)=> state.transactions.filter(t=>t.type==='Gasto' && nominaPeriodLabelForDate(t.date)===m && categoryGroupFor(t.category)===g).reduce((s,t)=>s+t.amount,0),
       membersFn: groupMemberCategories
     });
   }
@@ -948,7 +987,7 @@
     const colors = Object.fromEntries(groups.map((g,i)=>[g, palette[i%palette.length]]));
     return buildStackedChart({
       chartId:'ingresos', title:'Ingresos por categoría — evolución', months, groups, colors, txType:'Ingreso',
-      sumFn: (m,g)=> state.transactions.filter(t=>t.type==='Ingreso' && monthKey(t.date)===m && t.category===g).reduce((s,t)=>s+t.amount,0),
+      sumFn: (m,g)=> state.transactions.filter(t=>t.type==='Ingreso' && nominaPeriodLabelForDate(t.date)===m && t.category===g).reduce((s,t)=>s+t.amount,0),
       membersFn: g=>[g]
     });
   }
@@ -983,12 +1022,8 @@
       </div>`;
     }
 
-    const txMonths = allMonths();
-    const rollingEnd = (()=>{ let m = todayMonthKey(); for(let i=0;i<11;i++) m = nextMonthKey(m); return m; })();
-    const rangeStart = txMonths.length ? txMonths[0] : todayMonthKey();
-    const contiguous = [];
-    { let cur = rangeStart; let guard=0; while(cur<=rollingEnd && guard<240){ contiguous.push(cur); cur = nextMonthKey(cur); guard++; } }
-    const planMonths = Array.from(new Set([...contiguous, ...txMonths, ...Object.keys(state.monthlyPlans)])).sort();
+    const nominaHistoric = historicNominaPeriods();
+    const nominaForecast = forecastNominaPeriods();
 
     $app.innerHTML = `
       ${headerHtml()}
@@ -1002,9 +1037,9 @@
       <div class="group-head"><span class="g-lbl">Ahorro</span><span class="g-val ${privacyMode?'masked-val':''}">${privacyMode ? MASK : euro(totalAhorro)}</span></div>
       <div class="acc-grid">${ahorros.map(a=>accCellHtml(a,privacyMode)).join('')}</div>
       <div style="height:8px;"></div>
-      ${buildCategoryGroupChart(txMonths)}
-      ${buildSavingsEvolutionChart(planMonths)}
-      ${buildIncomeCategoryChart(txMonths)}
+      ${buildCategoryGroupChart(nominaHistoric)}
+      ${buildSavingsEvolutionChart(nominaForecast)}
+      ${buildIncomeCategoryChart(nominaHistoric)}
     `;
 
     document.getElementById('privacyToggle').onclick = ()=>{
@@ -1495,16 +1530,22 @@
   function buildSavingsEvolutionChart(months){
     const accRem = state.accounts.find(a=>a.id==='remunerada') || state.accounts.find(a=>a.type==='ahorro' && !a.manual);
     if(!accRem || !months.length){ lastSavingsChart = null; return ''; }
+    // "previsto": en la posición del periodo m se muestra lo acumulado ANTES de que llegue la nómina de m
+    // (la nómina de m se cobra el día de pago DENTRO de m, así que su aportación se ve reflejada en el periodo siguiente)
     let cum = accRem.initial;
-    const planned = months.map(m=>{ cum += goalAmountForMonth(m); return cum; });
-    const todayM = todayMonthKey();
-    const real = months.map(m=> m<=todayM ? ledgerBalance(accRem.id, m) : null);
+    const planned = months.map(m=>{ const val = cum; cum += goalAmountForMonth(m); return val; });
+    const todayM = nominaCurrentLabelMonth();
+    const real = months.map(m=>{
+      if(m > todayM) return null;
+      if(m === todayM) return ledgerBalanceAsOfDate(accRem.id, todayStr());
+      return ledgerBalanceAsOfDate(accRem.id, nominaPeriodForLabelMonth(m, state.paydayDay||1).end);
+    });
     const allVals = planned.concat(real.filter(v=>v!=null));
     if(!allVals.length){ lastSavingsChart = null; return ''; }
     const minV = Math.min(0, Math.min(...allVals));
     const maxV = Math.max(...allVals, 1);
-    const W = Math.max(320, months.length*48);
-    const H = 190, padL=46, padR=14, padT=14, padB=28;
+    const W = Math.max(320, months.length*52);
+    const H = 206, padL=46, padR=14, padT=14, padB=44;
     const xStep = (W-padL-padR) / Math.max(1, months.length-1);
     const yScale = v => H-padB - ( (v-minV)/((maxV-minV)||1) ) * (H-padT-padB);
     const xPos = i => padL + i*xStep;
@@ -1543,7 +1584,8 @@
           <path d="${plannedPath}" fill="none" stroke="var(--amber)" stroke-width="2" stroke-dasharray="5,4"/>
           <path d="${realPath}" fill="none" stroke="var(--green)" stroke-width="2.5"/>
           ${currentDotHtml}
-          ${months.map((m,i)=>`<text x="${xPos(i).toFixed(1)}" y="${H-8}" font-size="9" fill="var(--muted)" text-anchor="middle">${monthLabel(m)}</text>`).join('')}
+          ${months.map((m,i)=>`<text x="${xPos(i).toFixed(1)}" y="${H-24}" font-size="9" fill="var(--muted)" text-anchor="middle" font-weight="700">${monthLabel(m)}</text>
+          <text x="${xPos(i).toFixed(1)}" y="${H-12}" font-size="7" fill="var(--muted)" text-anchor="middle">${nominaRangeShort(m)}</text>`).join('')}
           <line id="savingsVLine" x1="0" y1="${padT}" x2="0" y2="${H-padB}" stroke="var(--ink-soft)" stroke-width="1" style="opacity:0;"/>
           <circle id="savingsDotP" r="4" fill="var(--amber)" stroke="#fff" stroke-width="1.5" style="opacity:0;"/>
           <circle id="savingsDotR" r="4" fill="var(--green)" stroke="#fff" stroke-width="1.5" style="opacity:0;"/>
@@ -1614,6 +1656,19 @@
     return arr;
   }
 
+  function collapsibleCard(key, title, bodyHtml){
+    const isOpen = ajustesOpen[key];
+    return `<div class="cell">
+      <div class="filters-toggle ${isOpen?'open':''}" data-ajustes-toggle="${key}">
+        <div class="section-title" style="margin:0;">${title}</div>
+        <span class="chev">▾</span>
+      </div>
+      <div class="filters-body" style="display:${isOpen?'block':'none'};margin-top:14px;">
+        ${bodyHtml}
+      </div>
+    </div>`;
+  }
+
   function renderAjustes(){
     const txMonths = allMonths();
     const rollingEnd = (()=>{ let m = todayMonthKey(); for(let i=0;i<11;i++) m = nextMonthKey(m); return m; })();
@@ -1625,18 +1680,16 @@
 
     let html = headerHtml('Objetivos y ajustes');
 
-    html += `<div class="cell cell-compact">
+    html += collapsibleCard('payday', 'Día de cobro', `
       <div class="compact-row">
         <div style="flex:1;min-width:0;">
-          <div class="section-title" style="margin:0;">Día de cobro</div>
-          <div class="empty-note" style="padding:4px 0 0;text-align:left;">Define el periodo "Nómina" del Dashboard.</div>
+          <div class="empty-note" style="padding:0;text-align:left;">Define el periodo "Nómina" del Dashboard y de los gráficos de Resumen.</div>
         </div>
         <input class="mono compact-input" type="number" min="1" max="31" step="1" id="paydayInput" value="${state.paydayDay||1}">
       </div>
-    </div>`;
+    `);
 
-    html += `<div class="cell">
-      <div class="section-title">Previsión mensual</div>
+    html += collapsibleCard('prevision', 'Previsión mensual', `
       <div class="empty-note" style="padding:0 0 12px;text-align:left;">El ingreso previsto es lo que usa el Dashboard para calcular el disponible desde el primer día del periodo. El % de ahorro se aplica sobre ese ingreso.</div>
       <div class="plan-table-wrap"><table class="plan-table-fixed">
         <thead><tr><th style="text-align:left;">Nómina</th><th>Ingreso</th><th>% ahorro</th></tr></thead>
@@ -1658,52 +1711,39 @@
           }).join('') || `<tr><td colspan="3" style="text-align:center;color:var(--muted);">Sin meses todavía</td></tr>`}
         </tbody>
       </table></div>
-    </div>`;
+    `);
 
-    html += `<div class="cell">
-      <div class="filters-toggle ${ajustesLogGastoOpen?'open':''}" id="logGastoToggle">
-        <div class="section-title" style="margin:0;">Log mensual por categoría (gastos)</div>
-        <span class="chev">▾</span>
-      </div>
-      <div class="filters-body" style="display:${ajustesLogGastoOpen?'block':'none'};margin-top:14px;">
-        <div class="pivot-wrap"><table class="pivot">
-          <thead><tr><th>Categoría</th>${planMonths.map(m=>`<th>${monthLabel(m)}</th>`).join('')}</tr></thead>
-          <tbody>
-            ${state.categories.map(cat=>{
-              const cells = planMonths.map(m=>{
-                const total = state.transactions.filter(t=>t.type==='Gasto' && t.category===cat && monthKey(t.date)===m).reduce((s,t)=>s+t.amount,0);
-                return `<td>${total? fmt(total) : '—'}</td>`;
-              }).join('');
-              return `<tr><td>${cat}</td>${cells}</tr>`;
-            }).join('')}
-          </tbody>
-        </table></div>
-      </div>
-    </div>`;
+    html += collapsibleCard('logGasto', 'Log mensual por categoría (gastos)', `
+      <div class="pivot-wrap"><table class="pivot">
+        <thead><tr><th>Categoría</th>${planMonths.map(m=>`<th>${monthLabel(m)}</th>`).join('')}</tr></thead>
+        <tbody>
+          ${state.categories.map(cat=>{
+            const cells = planMonths.map(m=>{
+              const total = state.transactions.filter(t=>t.type==='Gasto' && t.category===cat && monthKey(t.date)===m).reduce((s,t)=>s+t.amount,0);
+              return `<td>${total? fmt(total) : '—'}</td>`;
+            }).join('');
+            return `<tr><td>${cat}</td>${cells}</tr>`;
+          }).join('')}
+        </tbody>
+      </table></div>
+    `);
 
-    html += `<div class="cell">
-      <div class="filters-toggle ${ajustesLogIngresoOpen?'open':''}" id="logIngresoToggle">
-        <div class="section-title" style="margin:0;">Log mensual por categoría (ingresos)</div>
-        <span class="chev">▾</span>
-      </div>
-      <div class="filters-body" style="display:${ajustesLogIngresoOpen?'block':'none'};margin-top:14px;">
-        <div class="pivot-wrap"><table class="pivot">
-          <thead><tr><th>Categoría</th>${planMonths.map(m=>`<th>${monthLabel(m)}</th>`).join('')}</tr></thead>
-          <tbody>
-            ${state.incomeCategories.map(cat=>{
-              const cells = planMonths.map(m=>{
-                const total = state.transactions.filter(t=>t.type==='Ingreso' && t.category===cat && monthKey(t.date)===m).reduce((s,t)=>s+t.amount,0);
-                return `<td>${total? fmt(total) : '—'}</td>`;
-              }).join('');
-              return `<tr><td>${cat}</td>${cells}</tr>`;
-            }).join('')}
-          </tbody>
-        </table></div>
-      </div>
-    </div>`;
+    html += collapsibleCard('logIngreso', 'Log mensual por categoría (ingresos)', `
+      <div class="pivot-wrap"><table class="pivot">
+        <thead><tr><th>Categoría</th>${planMonths.map(m=>`<th>${monthLabel(m)}</th>`).join('')}</tr></thead>
+        <tbody>
+          ${state.incomeCategories.map(cat=>{
+            const cells = planMonths.map(m=>{
+              const total = state.transactions.filter(t=>t.type==='Ingreso' && t.category===cat && monthKey(t.date)===m).reduce((s,t)=>s+t.amount,0);
+              return `<td>${total? fmt(total) : '—'}</td>`;
+            }).join('');
+            return `<tr><td>${cat}</td>${cells}</tr>`;
+          }).join('')}
+        </tbody>
+      </table></div>
+    `);
 
-    html += `<div class="cell">
-      <div class="section-title">Categorías</div>
+    html += collapsibleCard('categorias', 'Categorías', `
       <div class="empty-note" style="padding:0 0 10px;text-align:left;">Toca una para cambiarle el nombre. El número de categorías se mantiene siempre.</div>
       <div class="filter-label">Gastos</div>
       <div class="filter-chip-row" id="renameGastoChips">
@@ -1713,10 +1753,9 @@
       <div class="filter-chip-row" id="renameIngresoChips">
         ${state.incomeCategories.map((c,i)=>`<div class="fchip" data-list="incomeCategories" data-idx="${i}">${c}</div>`).join('')}
       </div>
-    </div>`;
+    `);
 
-    html += `<div class="cell">
-      <div class="section-title">Agrupaciones de gastos</div>
+    html += collapsibleCard('grupos', 'Agrupaciones de gastos', `
       <div class="empty-note" style="padding:0 0 14px;text-align:left;">Así se agrupan tus categorías en el gráfico "Gastos por grupo" de Resumen. Lo que no metas en ningún grupo cae en "Otros".</div>
       ${state.expenseGroups.map((g,gi)=>`
         <div class="group-edit-block">
@@ -1730,10 +1769,9 @@
         </div>
       `).join('') || '<div class="empty-note">Sin agrupaciones todavía.</div>'}
       <button class="btn-ghost" id="addGroupBtn" style="margin-top:6px;">+ Nueva agrupación</button>
-    </div>`;
+    `);
 
-    html += `<div class="cell">
-      <div class="section-title">Cuentas</div>
+    html += collapsibleCard('cuentas', 'Cuentas', `
       ${state.accounts.map(a=>`
         <div class="acc-manage-row">
           <div><div class="am-name">${a.name}</div><div class="am-type">${a.manual?'manual':a.type} · ${a.manual?'valor actual':'saldo inicial'} ${fmt(a.manual?a.manualBalance:a.initial)}€</div></div>
@@ -1741,11 +1779,9 @@
         </div>
       `).join('')}
       <button class="btn-ghost" id="addAccBtn">+ Añadir cuenta</button>
-    </div>`;
+    `);
 
-    html += `<div class="cell">
-      <div class="section-title">Sincronización en la nube</div>
-      ${state.syncCode ? `
+    html += collapsibleCard('sync', 'Sincronización en la nube', state.syncCode ? `
         <div class="exp-row" style="border-top:none;padding-top:0;">
           <div class="exp-name">Código activo</div>
           <div class="mono" style="font-weight:700;">${state.syncCode}</div>
@@ -1757,15 +1793,13 @@
         <div class="empty-note" style="padding:0 0 12px;text-align:left;">Crea un código para poder ver y editar estos mismos datos desde el ordenador u otro dispositivo, abriendo la misma app con ese código.</div>
         <div class="field"><label>Código de sincronización</label><input type="text" id="newSyncCode" placeholder="ej. adri-cuentas-2026"></div>
         <button class="btn-primary" id="syncOnBtn">Activar sincronización</button>
-      `}
-    </div>`;
+      `);
 
-    html += `<div class="cell">
-      <div class="section-title">Exportar a Excel</div>
+    html += collapsibleCard('export', 'Exportar a Excel', `
       <div class="field"><label>Correo para enviarlo</label><input type="email" id="exportEmail" value="${state.exportEmail||''}" placeholder="tucorreo@ejemplo.com"></div>
       <button class="btn-primary" id="exportBtn">Descargar y preparar correo</button>
       <div class="empty-note" style="padding:8px 0 0;">Descarga un .xlsx con "Movimientos" y "Resumen mensual", y abre un borrador de correo con el destinatario puesto — el archivo hay que adjuntarlo a mano, esta app no puede enviarlo sola.</div>
-    </div>`;
+    `);
 
     $app.innerHTML = html;
 
@@ -1847,8 +1881,9 @@
         saveState();
       };
     });
-    document.getElementById('logGastoToggle').onclick = ()=>{ ajustesLogGastoOpen = !ajustesLogGastoOpen; renderAjustes(); };
-    document.getElementById('logIngresoToggle').onclick = ()=>{ ajustesLogIngresoOpen = !ajustesLogIngresoOpen; renderAjustes(); };
+    $app.querySelectorAll('[data-ajustes-toggle]').forEach(el=>{
+      el.onclick = ()=>{ const k = el.dataset.ajustesToggle; ajustesOpen[k] = !ajustesOpen[k]; renderAjustes(); };
+    });
     $app.querySelectorAll('.init-input').forEach(inp=>{
       inp.onchange = e=>{
         const acc = state.accounts.find(a=>a.id===e.target.dataset.acc);
