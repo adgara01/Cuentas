@@ -68,6 +68,7 @@
   .day-chart-col-fluid{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end;}
   .day-chart-pair-fluid{display:flex;align-items:flex-end;justify-content:center;gap:1.5px;width:100%;height:110px;}
   .day-bar-fluid{width:38%;max-width:7px;border-radius:2px 2px 1px 1px;min-height:2px;}
+  .day-chart-empty{color:var(--muted);font-size:13px;text-align:center;padding:28px 10px;}
   .check-row{display:flex;align-items:center;gap:9px;padding:9px 2px 6px;cursor:pointer;}
   .check-row input[type="checkbox"]{width:18px;height:18px;flex-shrink:0;margin-top:1px;accent-color:var(--green);}
   .check-row span{font-size:13px;color:var(--ink-soft);font-weight:600;line-height:1.35;}
@@ -261,6 +262,7 @@
   .day-chart-pair{display:flex;align-items:flex-end;gap:3px;height:80px;}
   .day-bar{width:6px;border-radius:3px 3px 1px 1px;}
   .day-bar-out{background:var(--red);}
+  .day-bar-extra{background:var(--amber);}
   .day-bar-in{background:var(--green);}
   .day-chart-lbl{font-size:9px;color:var(--muted);margin-top:6px;font-weight:600;white-space:nowrap;}
   .day-chart-legend{display:flex;gap:16px;margin-top:14px;padding:0 4px;font-size:11.5px;color:var(--ink-soft);font-weight:600;}
@@ -1282,7 +1284,7 @@
       </div>
       <div class="battery-wide-right">
         <div class="battery-bar-bg"><div class="battery-bar-fill" style="width:${Math.max(3,pctUsed)}%;background:${dispColor};"></div></div>
-        <div class="battery-sub">Gastado ${fmt(gasNormal)}€ de ${fmt(presupuesto)}€ presupuesto${usingForecast?' <span style="color:var(--green);">· previsto</span>':''}</div>
+        <div class="battery-sub">Gastado ${fmt(gasNormal)}€ de ${fmt(presupuesto)}€ presupuesto</div>
         ${gasExtra>0 ? `<div class="battery-extra-note">+ ${fmt(gasExtra)}€ en gastos extraordinarios (no incluidos)</div>` : ''}
       </div>
     </div>`;
@@ -1293,26 +1295,32 @@
     const fiscalDayData = [];
     for(let i=0;i<curDays;i++){
       const d = addDays(curPeriod.start, i);
-      const gasto = state.transactions.filter(t=>t.type==='Gasto' && t.date===d).reduce((s,t)=>s+t.amount,0);
-      const ingreso = state.transactions.filter(t=>t.type==='Ingreso' && t.date===d).reduce((s,t)=>s+t.amount,0);
-      fiscalDayData.push({ label: String(new Date(d+'T00:00:00').getDate()), gasto, ingreso });
+      const dayTx = state.transactions.filter(t=>t.date===d);
+      const gastoNormal = dayTx.filter(t=>t.type==='Gasto' && !t.extraordinary).reduce((s,t)=>s+t.amount,0);
+      const gastoExtra = dayTx.filter(t=>t.type==='Gasto' && t.extraordinary).reduce((s,t)=>s+t.amount,0);
+      const ingreso = dayTx.filter(t=>t.type==='Ingreso').reduce((s,t)=>s+t.amount,0);
+      fiscalDayData.push({ label: String(new Date(d+'T00:00:00').getDate()), gastoNormal, gastoExtra, gastoTotal: gastoNormal+gastoExtra, ingreso });
     }
-    const maxFiscalVal = Math.max(...fiscalDayData.map(d=>Math.max(d.gasto,d.ingreso)),1);
+    // la escala se calcula SIN los gastos extraordinarios, para que un gasto puntual grande no aplaste el resto de días
+    const maxFiscalVal = Math.max(...fiscalDayData.map(d=>Math.max(d.gastoNormal,d.ingreso)),1);
     const maxFiscalLog = Math.log(maxFiscalVal+1) || 1;
-    function logHFiscal(v){ return v>0 ? Math.max(5,(Math.log(v+1)/maxFiscalLog)*100) : 0; }
+    function logHFiscal(v){ return v>0 ? Math.min(100,Math.max(5,(Math.log(v+1)/maxFiscalLog)*100)) : 0; }
     const labelEvery = Math.max(1, Math.ceil(fiscalDayData.length/9));
+    const hasFiscalData = fiscalDayData.some(d=>d.gastoTotal>0 || d.ingreso>0);
     html += `<div class="chart-wrap">
       <div class="chart-title">Gasto diario — ${monthLabel(nominaCurrentLabelMonth())}</div>
+      ${hasFiscalData ? `
       <div class="day-chart-bars-fluid">
         ${fiscalDayData.map((dd,i)=>`
           <div class="day-chart-col-fluid">
             <div class="day-chart-pair-fluid">
-              <div class="day-bar-fluid day-bar-out" style="height:${logHFiscal(dd.gasto)}%;" title="Gasto ${fmt(dd.gasto)}€"></div>
+              <div class="day-bar-fluid ${dd.gastoExtra>0?'day-bar-extra':'day-bar-out'}" style="height:${logHFiscal(dd.gastoTotal)}%;" title="Gasto ${fmt(dd.gastoTotal)}€${dd.gastoExtra>0?' (incluye extraordinario)':''}"></div>
               <div class="day-bar-fluid day-bar-in" style="height:${logHFiscal(dd.ingreso)}%;" title="Ingreso ${fmt(dd.ingreso)}€"></div>
             </div>
             <div class="day-chart-lbl">${i%labelEvery===0 ? dd.label : ''}</div>
           </div>`).join('')}
-      </div>
+      </div>` : `
+      <div class="day-chart-empty">Todavía no hay movimientos en este periodo.</div>`}
     </div>`;
 
     // ---- fila 2: ingresos por categoría + gastos por categoría ----
