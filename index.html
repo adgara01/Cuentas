@@ -1358,10 +1358,9 @@
     html += `</div>`;
 
     // ---- filtros colapsables ----
-    const activeFilterCount = dashFilters.types.size + dashFilters.accounts.size + dashFilters.categories.size + (dashFilters.dateMode!=='nomina'?1:0);
     html += `<div class="cell">
       <div class="filters-toggle ${dashFiltersOpen?'open':''}" id="filtersToggle">
-        <div class="section-title" style="margin:0;">Filtros ${activeFilterCount ? `<span class="filters-badge">${activeFilterCount}</span>` : ''}</div>
+        <div class="section-title" style="margin:0;">Filtros</div>
         <span class="chev">▾</span>
       </div>
       <div class="filters-body" id="filtersBody" style="display:${dashFiltersOpen?'block':'none'};">
