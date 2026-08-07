@@ -1375,8 +1375,7 @@
         <div class="filter-label" style="margin-top:4px;">Tipo</div>
         ${chipRow('chipTipo', ['Gasto','Ingreso','Movimiento'], dashFilters.types)}
         ${state.filterPresets.length ? `
-          <div class="preset-divider"></div>
-          <div class="filter-label">Presets</div>
+          <div class="filter-label" style="margin-top:10px;">Presets</div>
           <div class="filter-chip-row" id="presetChipRow">
             ${state.filterPresets.map(p=>`<div class="fchip preset-chip" data-preset="${p.id}">${p.name}</div>`).join('')}
           </div>
@@ -1388,8 +1387,6 @@
         ${chipRow('chipCatGasto', state.categories, dashFilters.categories)}
         <div class="cat-group-label" data-catgroup="ingreso">Ingreso <span class="cat-group-hint">(toca para marcar todas)</span></div>
         ${chipRow('chipCatIngreso', state.incomeCategories, dashFilters.categories)}
-        <div class="cat-group-label" data-catgroup="movimiento">Movimiento <span class="cat-group-hint">(toca para marcar todas)</span></div>
-        ${chipRow('chipCatMov', ['Ahorro','Transferencia'], dashFilters.categories)}
         <div class="filter-label">Periodo</div>
         <div class="seg" id="dateModeSeg">
           <button data-m="todo" class="${dashFilters.dateMode==='todo'?'active':''}">Todo</button>
@@ -1462,11 +1459,11 @@
     document.getElementById('filtersToggle').onclick = ()=>{ dashFiltersOpen = !dashFiltersOpen; renderDashboard(); };
     document.querySelectorAll('#chipTipo .fchip').forEach(c=>{ c.onclick = ()=> toggleChip(dashFilters.types, c.dataset.val); });
     document.querySelectorAll('#chipAcc .fchip').forEach(c=>{ c.onclick = ()=> toggleChip(dashFilters.accounts, c.dataset.val); });
-    document.querySelectorAll('#chipCatGasto .fchip, #chipCatIngreso .fchip, #chipCatMov .fchip').forEach(c=>{ c.onclick = ()=> toggleChip(dashFilters.categories, c.dataset.val); });
+    document.querySelectorAll('#chipCatGasto .fchip, #chipCatIngreso .fchip').forEach(c=>{ c.onclick = ()=> toggleChip(dashFilters.categories, c.dataset.val); });
     document.querySelectorAll('.cat-group-label').forEach(el=>{
       el.onclick = ()=>{
         const group = el.dataset.catgroup;
-        const list = group==='gasto' ? state.categories : group==='ingreso' ? state.incomeCategories : ['Ahorro','Transferencia'];
+        const list = group==='gasto' ? state.categories : state.incomeCategories;
         list.forEach(c=>dashFilters.categories.add(c));
         renderDashboard();
       };
