@@ -1260,15 +1260,18 @@
 
     const ingT = tx.filter(t=>t.type==='Ingreso').reduce((a,t)=>a+t.amount,0);
     const gasT = tx.filter(t=>t.type==='Gasto').reduce((a,t)=>a+t.amount,0);
-    const gasNormal = tx.filter(t=>t.type==='Gasto' && !t.extraordinary).reduce((a,t)=>a+t.amount,0);
-    const gasExtra = tx.filter(t=>t.type==='Gasto' && t.extraordinary).reduce((a,t)=>a+t.amount,0);
 
     let html = headerHtml('Dashboard');
 
-    // ---- fila 1: batería (disponible) + gráfico de días ----
-    const planKey = range.planKey;
+    // ---- fila 1: batería (disponible) + gráfico de días — SIEMPRE la nómina en curso, ignora los filtros ----
+    const curPeriod = payPeriodContaining(todayStr(), state.paydayDay||1);
+    const txFiscal = state.transactions.filter(t=> t.date>=curPeriod.start && t.date<=curPeriod.end);
+    const gasNormal = txFiscal.filter(t=>t.type==='Gasto' && !t.extraordinary).reduce((a,t)=>a+t.amount,0);
+    const gasExtra = txFiscal.filter(t=>t.type==='Gasto' && t.extraordinary).reduce((a,t)=>a+t.amount,0);
+    const ingFiscal = txFiscal.filter(t=>t.type==='Ingreso').reduce((a,t)=>a+t.amount,0);
+    const planKey = nominaCurrentLabelMonth();
     const plan = state.monthlyPlans[planKey];
-    const incomeForBudget = (plan && plan.income!=null) ? plan.income : ingT;
+    const incomeForBudget = (plan && plan.income!=null) ? plan.income : ingFiscal;
     const pct = goalPctForMonth(planKey);
     const objetivoAhorro = incomeForBudget * (pct/100);
     const presupuesto = Math.max(0, incomeForBudget - objetivoAhorro);
@@ -1290,7 +1293,6 @@
     </div>`;
 
     // ---- gráfico de días: SIEMPRE el mes fiscal (nómina) en curso, todos los días, sin agrupar ni hacer scroll ----
-    const curPeriod = payPeriodContaining(todayStr(), state.paydayDay||1);
     const curDays = daysBetween(curPeriod.start, curPeriod.end) + 1;
     const fiscalDayData = [];
     for(let i=0;i<curDays;i++){
@@ -1328,9 +1330,9 @@
     tx.filter(t=>t.type==='Ingreso').forEach(t=>{ byCatIng[t.category] = (byCatIng[t.category]||0)+t.amount; });
     const ingEntries = Object.entries(byCatIng).sort((a,b)=>b[1]-a[1]).slice(0,10);
     const maxIng = Math.max(...ingEntries.map(e=>e[1]),1);
-    html += `<div class="chart-wrap">
+    html += `<div class="chart-wrap" style="min-height:170px;display:flex;flex-direction:column;">
       <div class="chart-title">Ingresos</div>
-      <div class="chart-bars">
+      <div class="chart-bars" style="flex:1;">
         ${ingEntries.length ? ingEntries.map(([cat,amt])=>`
           <div class="chart-bar-item">
             <div class="chart-bar-val mono">${fmt(amt)}€</div>
@@ -1344,9 +1346,9 @@
     tx.filter(t=>t.type==='Gasto').forEach(t=>{ byCatGas[t.category] = (byCatGas[t.category]||0)+t.amount; });
     const gasEntries = Object.entries(byCatGas).sort((a,b)=>b[1]-a[1]).slice(0,10);
     const maxGas = Math.max(...gasEntries.map(e=>e[1]),1);
-    html += `<div class="chart-wrap">
+    html += `<div class="chart-wrap" style="min-height:170px;display:flex;flex-direction:column;">
       <div class="chart-title">Gastos</div>
-      <div class="chart-bars">
+      <div class="chart-bars" style="flex:1;">
         ${gasEntries.length ? gasEntries.map(([cat,amt])=>`
           <div class="chart-bar-item">
             <div class="chart-bar-val mono">${fmt(amt)}€</div>
