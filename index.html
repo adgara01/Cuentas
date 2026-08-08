@@ -1303,10 +1303,10 @@
       const ingreso = dayTx.filter(t=>t.type==='Ingreso').reduce((s,t)=>s+t.amount,0);
       fiscalDayData.push({ label: String(new Date(d+'T00:00:00').getDate()), gastoNormal, gastoExtra, gastoTotal: gastoNormal+gastoExtra, ingreso });
     }
-    // la escala se calcula SIN los gastos extraordinarios, para que un gasto puntual grande no aplaste el resto de días
+    // escala en raíz (no logarítmica pura): sigue evitando que un gasto atípico enorme aplaste el resto de días,
+    // pero respeta mucho mejor las proporciones normales del día a día (9€ vs 50€ se ve claramente distinto)
     const maxFiscalVal = Math.max(...fiscalDayData.map(d=>Math.max(d.gastoNormal,d.ingreso)),1);
-    const maxFiscalLog = Math.log(maxFiscalVal+1) || 1;
-    function logHFiscal(v){ return v>0 ? Math.min(100,Math.max(5,(Math.log(v+1)/maxFiscalLog)*100)) : 0; }
+    function logHFiscal(v){ return v>0 ? Math.min(100,Math.max(4,Math.pow(v/maxFiscalVal,0.5)*100)) : 0; }
     const hasFiscalData = fiscalDayData.some(d=>d.gastoTotal>0 || d.ingreso>0);
     html += `<div class="chart-wrap">
       <div class="chart-title">Gasto diario — ${monthLabel(nominaCurrentLabelMonth())}</div>
