@@ -66,10 +66,12 @@
   /* ---------- gráfico diario a ancho completo: las barras se reparten el ancho, siempre caben todos los días ---------- */
   .day-chart-row{display:flex;align-items:flex-end;gap:3px;margin-top:14px;}
   .day-chart-axis{width:22px;flex-shrink:0;display:flex;flex-direction:column;justify-content:flex-end;height:90px;}
-  .day-axis-inner{position:relative;height:90px;}
+  .day-axis-inner{position:relative;height:70px;}
   .day-axis-tick{position:absolute;left:0;right:2px;transform:translateY(50%);font-size:7.5px;color:var(--muted);white-space:nowrap;text-align:right;font-weight:600;}
   .day-chart-bars-fluid{display:flex;align-items:flex-end;height:90px;gap:2px;position:relative;flex:1;min-width:0;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
   .day-grid-line{position:absolute;left:0;right:0;height:1px;pointer-events:none;background:var(--line);opacity:0.6;}
+  .day-chart-grid-overlay{position:absolute;top:0;left:0;right:0;bottom:0;display:flex;flex-direction:column;justify-content:flex-end;pointer-events:none;z-index:0;}
+  .day-chart-grid-inner{position:relative;height:70px;}
   .day-week-line{position:absolute;top:0;bottom:0;width:1px;background:var(--line);opacity:0.8;pointer-events:none;}
   .day-chart-col-fluid{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end;pointer-events:none;position:relative;z-index:1;}
   .day-chart-pair-fluid{display:flex;align-items:flex-end;justify-content:center;gap:1px;width:100%;height:70px;}
@@ -1312,15 +1314,15 @@
     }
     // escala LINEAL fija, de 0 a 300€ en pasos de 60. Lo que se pasa de 300 no sube más de altura,
     // en vez de eso la barra se hace más gorda cuanto más se pase.
-    const FISCAL_CAP = 300;
+    const FISCAL_CAP = 175;
     function logHFiscal(v){ return v>0 ? Math.min(100, (v/FISCAL_CAP)*100) : 0; }
     function fiscalBarWidthPx(v){
       if(v<=FISCAL_CAP) return 3;
-      const extra = (v-FISCAL_CAP)/FISCAL_CAP; // cuánto se pasa, en "veces 300"
+      const extra = (v-FISCAL_CAP)/FISCAL_CAP; // cuánto se pasa, en "veces 175"
       return Math.min(9, 3 + extra*3);
     }
     const hasFiscalData = fiscalDayData.some(d=>d.gastoTotal>0 || d.ingreso>0);
-    const fiscalTicks = [0,60,120,180,240,300];
+    const fiscalTicks = [0,35,70,105,140,175];
     // líneas verticales finas entre domingo y lunes, para marcar el cambio de semana
     const weekBoundaries = [];
     fiscalDayData.forEach((dd,i)=>{
@@ -1329,16 +1331,21 @@
     });
     lastFiscalChart = hasFiscalData ? { days: fiscalDayData } : null;
     html += `<div class="chart-wrap">
-      <div class="chart-title">Gasto diario — ${monthLabel(nominaCurrentLabelMonth())} <span style="font-weight:400;text-transform:none;letter-spacing:0;">(arrastra para ver cada día)</span></div>
+      <div class="chart-title">Gasto diario — ${monthLabel(nominaCurrentLabelMonth())} <span style="font-weight:400;text-transform:none;letter-spacing:0;">(toca un día para filtrar, arrastra para ver el importe)</span></div>
       ${hasFiscalData ? `
       <div class="day-chart-row">
         <div class="day-chart-axis">
           <div class="day-axis-inner">
-            ${fiscalTicks.map(t=>`<div class="day-axis-tick" style="bottom:${logHFiscal(t)}%;">${t===300?'300€+':fmtWhole(t)+'€'}</div>`).join('')}
+            ${fiscalTicks.map(t=>`<div class="day-axis-tick" style="bottom:${logHFiscal(t)}%;">${t===175?'175€+':fmtWhole(t)+'€'}</div>`).join('')}
           </div>
         </div>
         <div class="day-chart-bars-fluid" id="fiscalChartBars">
-          ${fiscalTicks.map(t=>`<div class="day-grid-line day-grid-major" style="bottom:${logHFiscal(t)}%;"></div>`).join('')}
+          <div class="day-chart-grid-overlay">
+            <div class="day-chart-grid-inner">
+              ${fiscalTicks.map(t=>`<div class="day-grid-line day-grid-major" style="bottom:${logHFiscal(t)}%;"></div>`).join('')}
+            </div>
+            <div class="day-chart-lbl" style="visibility:hidden;">0</div>
+          </div>
           ${weekBoundaries.map(i=>`<div class="day-week-line" style="left:${(i/fiscalDayData.length*100).toFixed(3)}%;"></div>`).join('')}
           ${fiscalDayData.map((dd,i)=>`
             <div class="day-chart-col-fluid" data-idx="${i}">
@@ -1732,10 +1739,15 @@
     const bars = document.getElementById('fiscalChartBars');
     if(!d || !bars) return;
     const tooltip = document.getElementById('fiscalTooltip');
-    function showAt(clientX){
+    let downX = null, downIdx = null;
+    function idxAt(clientX){
       const rect = bars.getBoundingClientRect();
       const frac = Math.max(0, Math.min(0.9999, (clientX - rect.left) / rect.width));
-      const idx = Math.floor(frac * d.days.length);
+      return Math.floor(frac * d.days.length);
+    }
+    function showAt(clientX){
+      const rect = bars.getBoundingClientRect();
+      const idx = idxAt(clientX);
       const day = d.days[idx];
       if(!day) return;
       const px = (idx+0.5)/d.days.length * rect.width;
@@ -1748,12 +1760,32 @@
       tooltip.style.left = px+'px';
     }
     function hide(){ tooltip.style.display = 'none'; }
+    function selectDayAt(clientX){
+      const idx = idxAt(clientX);
+      const day = d.days[idx];
+      if(!day) return;
+      dashFilters.dateMode = 'custom';
+      dashFilters.customStart = day.date;
+      dashFilters.customEnd = day.date;
+      dashFiltersOpen = true;
+      presetActive = false;
+      renderDashboard();
+    }
     bars.onpointermove = e=> showAt(e.clientX);
-    bars.onpointerdown = e=> showAt(e.clientX);
+    bars.onpointerdown = e=>{ downX = e.clientX; downIdx = idxAt(e.clientX); showAt(e.clientX); };
+    bars.onpointerup = e=>{
+      if(downX!=null && Math.abs(e.clientX-downX) < 8) selectDayAt(e.clientX);
+      downX = null;
+    };
     bars.onpointerleave = hide;
-    bars.addEventListener('touchstart', e=>{ if(e.touches[0]){ e.preventDefault(); showAt(e.touches[0].clientX); } }, {passive:false});
+    bars.addEventListener('touchstart', e=>{ if(e.touches[0]){ e.preventDefault(); downX = e.touches[0].clientX; showAt(e.touches[0].clientX); } }, {passive:false});
     bars.addEventListener('touchmove', e=>{ if(e.touches[0]){ e.preventDefault(); showAt(e.touches[0].clientX); } }, {passive:false});
-    bars.ontouchend = hide;
+    bars.addEventListener('touchend', e=>{
+      const x = e.changedTouches && e.changedTouches[0] ? e.changedTouches[0].clientX : null;
+      if(x!=null && downX!=null && Math.abs(x-downX) < 8) selectDayAt(x);
+      downX = null;
+      hide();
+    });
     bars.oncontextmenu = e=> e.preventDefault();
     bars.addEventListener('selectstart', e=> e.preventDefault());
   }
