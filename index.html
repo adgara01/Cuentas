@@ -75,7 +75,7 @@
   .day-week-line{position:absolute;top:0;bottom:0;width:1px;background:var(--line);opacity:0.8;pointer-events:none;}
   .day-chart-col-fluid{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end;pointer-events:none;position:relative;z-index:1;}
   .day-chart-pair-fluid{display:flex;align-items:flex-end;justify-content:center;gap:1px;width:100%;height:70px;}
-  .day-bar-fluid{width:40%;max-width:3px;border-radius:2px;}
+  .day-bar-fluid{border-radius:2px 2px 0 0;}
   .day-tick-empty{width:3px;height:3px;border-radius:50%;background:var(--line);}
   .day-chart-empty{color:var(--muted);font-size:13px;text-align:center;padding:28px 10px;}
   .check-row{display:flex;align-items:center;gap:9px;padding:9px 2px 6px;cursor:pointer;}
@@ -1312,14 +1312,15 @@
       const ingreso = dayTx.filter(t=>t.type==='Ingreso').reduce((s,t)=>s+t.amount,0);
       fiscalDayData.push({ date: d, label: String(new Date(d+'T00:00:00').getDate()), gastoNormal, gastoExtra, gastoTotal: gastoNormal+gastoExtra, ingreso });
     }
-    // escala LINEAL fija, de 0 a 300€ en pasos de 60. Lo que se pasa de 300 no sube más de altura,
-    // en vez de eso la barra se hace más gorda cuanto más se pase.
+    // escala LINEAL fija, de 0 a 175€ en pasos de 35. Lo que se pasa de 175 no sube más de altura,
+    // en vez de eso la barra se hace más gorda cuanto más se pase — en % de SU PROPIA casilla del día,
+    // nunca en píxeles fijos, así nunca puede invadir el día de al lado, tenga el mes los días que tenga.
     const FISCAL_CAP = 175;
     function logHFiscal(v){ return v>0 ? Math.min(100, (v/FISCAL_CAP)*100) : 0; }
-    function fiscalBarWidthPx(v){
-      if(v<=FISCAL_CAP) return 3;
-      const extra = (v-FISCAL_CAP)/FISCAL_CAP; // cuánto se pasa, en "veces 175"
-      return Math.min(9, 3 + extra*3);
+    function fiscalBarWidthPct(v){
+      if(v<=FISCAL_CAP) return 32; // grosor fino por defecto
+      const extra = (v-FISCAL_CAP)/FISCAL_CAP;
+      return Math.min(44, 32 + extra*8); // dos barras (gasto+ingreso) a 44% + hueco siempre caben dentro del 100% de la casilla
     }
     const hasFiscalData = fiscalDayData.some(d=>d.gastoTotal>0 || d.ingreso>0);
     const fiscalTicks = [0,35,70,105,140,175];
@@ -1338,20 +1339,21 @@
           <div class="day-axis-inner">
             ${fiscalTicks.map(t=>`<div class="day-axis-tick" style="bottom:${logHFiscal(t)}%;">${t===175?'175€+':fmtWhole(t)+'€'}</div>`).join('')}
           </div>
+          <div class="day-chart-lbl" style="visibility:hidden;">0</div>
         </div>
         <div class="day-chart-bars-fluid" id="fiscalChartBars">
           <div class="day-chart-grid-overlay">
             <div class="day-chart-grid-inner">
               ${fiscalTicks.map(t=>`<div class="day-grid-line day-grid-major" style="bottom:${logHFiscal(t)}%;"></div>`).join('')}
+              ${weekBoundaries.map(i=>`<div class="day-week-line" style="left:${(i/fiscalDayData.length*100).toFixed(3)}%;"></div>`).join('')}
             </div>
             <div class="day-chart-lbl" style="visibility:hidden;">0</div>
           </div>
-          ${weekBoundaries.map(i=>`<div class="day-week-line" style="left:${(i/fiscalDayData.length*100).toFixed(3)}%;"></div>`).join('')}
           ${fiscalDayData.map((dd,i)=>`
             <div class="day-chart-col-fluid" data-idx="${i}">
               <div class="day-chart-pair-fluid">
-                <div class="day-bar-fluid day-bar-out" style="height:${logHFiscal(dd.gastoTotal)}%;width:${fiscalBarWidthPx(dd.gastoTotal)}px;max-width:none;"></div>
-                <div class="day-bar-fluid day-bar-in" style="height:${logHFiscal(dd.ingreso)}%;width:${fiscalBarWidthPx(dd.ingreso)}px;max-width:none;"></div>
+                <div class="day-bar-fluid day-bar-out" style="height:${logHFiscal(dd.gastoTotal)}%;width:${fiscalBarWidthPct(dd.gastoTotal)}%;max-width:none;"></div>
+                <div class="day-bar-fluid day-bar-in" style="height:${logHFiscal(dd.ingreso)}%;width:${fiscalBarWidthPct(dd.ingreso)}%;max-width:none;"></div>
               </div>
               <div class="day-chart-lbl">${dd.label}</div>
             </div>`).join('')}
