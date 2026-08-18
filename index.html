@@ -250,7 +250,7 @@
   .chart-wrap svg text{pointer-events:none;}
   .chart-title{font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--muted);font-weight:700;margin-bottom:2px;padding:0 4px;}
   .chart-subtitle{font-size:10.5px;color:var(--muted);font-weight:500;margin-bottom:12px;padding:0 4px;text-transform:none;letter-spacing:0;}
-  .chart-bars{display:flex;align-items:flex-end;gap:7px;min-height:70px;padding:23px 2px 0;}
+  .chart-bars{display:flex;align-items:flex-end;gap:7px;min-height:70px;padding:8px 2px 0;}
   .chart-bar-item{display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:36px;}
   .chart-bar-val{font-size:8px;font-weight:700;margin-bottom:5px;white-space:nowrap;color:var(--ink-soft);}
   .chart-bar{width:22px;background:var(--ink);border-radius:6px 6px 3px 3px;}
@@ -991,7 +991,7 @@
       });
       if(totals[i]>0){
         const topY = (H-padB) - (totals[i]/maxTotal)*usableH;
-        segs += `<text x="${(i*(barW+gap)+gap/2+barW/2).toFixed(1)}" y="${Math.max(10,topY-6).toFixed(1)}" font-size="8.5" fill="var(--ink-soft)" text-anchor="middle" font-weight="700">${fmt(totals[i])}€</text>`;
+        segs += `<text x="${(i*(barW+gap)+gap/2+barW/2).toFixed(1)}" y="${Math.max(10,topY-6).toFixed(1)}" font-size="8.5" fill="var(--ink-soft)" text-anchor="middle" font-weight="700">${fmtWhole(totals[i])}€</text>`;
       }
       segs += `<rect class="bar-hit" data-chart="${chartId}" data-idx="${i}" x="${(i*(barW+gap)).toFixed(1)}" y="0" width="${(barW+gap).toFixed(1)}" height="${H}" fill="transparent" style="cursor:pointer;"/>`;
       return segs;
@@ -1730,13 +1730,13 @@
       if(d.real[idx]!=null){
         dotR.setAttribute('cx', px); dotR.setAttribute('cy', yScale(d.real[idx]));
         dotR.style.opacity = 1;
-        html += `<br>Real: ${fmt(d.real[idx])}€`;
+        html += `<br>Real: ${fmtWhole(d.real[idx])}€`;
       } else {
         dotR.style.opacity = 0;
       }
       dotP.setAttribute('cx', px); dotP.setAttribute('cy', yScale(d.planned[idx]));
       dotP.style.opacity = 1;
-      html += `<br>Previsto: ${fmt(d.planned[idx])}€`;
+      html += `<br>Previsto: ${fmtWhole(d.planned[idx])}€`;
       tooltip.innerHTML = html;
       tooltip.style.display = 'block';
       tooltip.style.left = px+'px';
