@@ -64,7 +64,7 @@
   .battery-sub{font-size:10.5px;color:var(--ink-soft);margin-top:8px;line-height:1.4;}
   .battery-extra-note{font-size:9.5px;color:var(--muted);margin-top:4px;line-height:1.3;}
   /* ---------- gráfico diario a ancho completo: las barras se reparten el ancho, siempre caben todos los días ---------- */
-  .day-chart-row{display:flex;align-items:flex-end;gap:8px;}
+  .day-chart-row{display:flex;align-items:flex-end;gap:8px;margin-top:14px;}
   .day-chart-axis{width:28px;flex-shrink:0;display:flex;flex-direction:column;justify-content:flex-end;height:90px;}
   .day-axis-inner{position:relative;height:90px;}
   .day-axis-tick{position:absolute;left:0;right:2px;transform:translateY(50%);font-size:7.5px;color:var(--muted);white-space:nowrap;text-align:right;font-weight:600;}
@@ -1308,16 +1308,17 @@
       const ingreso = dayTx.filter(t=>t.type==='Ingreso').reduce((s,t)=>s+t.amount,0);
       fiscalDayData.push({ label: String(new Date(d+'T00:00:00').getDate()), gastoNormal, gastoExtra, gastoTotal: gastoNormal+gastoExtra, ingreso });
     }
-    // escala logarítmica de verdad, con anclas fijas por década (1€→10€→100€→1000€), cada salto ocupa el mismo espacio
-    const maxFiscalVal = Math.max(...fiscalDayData.map(d=>Math.max(d.gastoNormal,d.ingreso)),1);
-    const fiscalDecades = maxFiscalVal > 1000 ? 4 : 3; // hasta 1000€ (o 10000€ si algún día se supera)
+    // escala logarítmica de verdad, con anclas fijas por década (10€, 100€, 1000€...), cada salto ocupa el mismo espacio.
+    // el número de décadas se ajusta a tus datos reales, para no dejar el gráfico medio vacío.
+    const maxFiscalVal = Math.max(...fiscalDayData.map(d=>d.gastoNormal),1);
+    const fiscalDecades = Math.max(1, Math.ceil(Math.log10(Math.max(maxFiscalVal,10))));
     function logHFiscal(v){
       if(v<=0) return 0;
       const h = (Math.log10(v)/fiscalDecades)*100;
       return Math.min(100, Math.max(3, h));
     }
     const hasFiscalData = fiscalDayData.some(d=>d.gastoTotal>0 || d.ingreso>0);
-    const fiscalTicks = fiscalDecades===4 ? [0,10,100,1000,10000] : [0, 10, 100, 1000];
+    const fiscalTicks = [0, ...Array.from({length:fiscalDecades}, (_,i)=>Math.pow(10,i+1))];
     lastFiscalChart = hasFiscalData ? { days: fiscalDayData } : null;
     html += `<div class="chart-wrap">
       <div class="chart-title">Gasto diario — ${monthLabel(nominaCurrentLabelMonth())} <span style="font-weight:400;text-transform:none;letter-spacing:0;">(arrastra para ver cada día)</span></div>
