@@ -64,12 +64,14 @@
   .battery-sub{font-size:10.5px;color:var(--ink-soft);margin-top:8px;line-height:1.4;}
   .battery-extra-note{font-size:9.5px;color:var(--muted);margin-top:4px;line-height:1.3;}
   /* ---------- gráfico diario a ancho completo: las barras se reparten el ancho, siempre caben todos los días ---------- */
-  .day-chart-row{display:flex;align-items:flex-end;gap:8px;margin-top:14px;}
-  .day-chart-axis{width:28px;flex-shrink:0;display:flex;flex-direction:column;justify-content:flex-end;height:90px;}
+  .day-chart-row{display:flex;align-items:flex-end;gap:3px;margin-top:14px;}
+  .day-chart-axis{width:22px;flex-shrink:0;display:flex;flex-direction:column;justify-content:flex-end;height:90px;}
   .day-axis-inner{position:relative;height:90px;}
   .day-axis-tick{position:absolute;left:0;right:2px;transform:translateY(50%);font-size:7.5px;color:var(--muted);white-space:nowrap;text-align:right;font-weight:600;}
   .day-chart-bars-fluid{display:flex;align-items:flex-end;height:90px;gap:2px;position:relative;flex:1;min-width:0;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
-  .day-chart-col-fluid{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end;pointer-events:none;}
+  .day-grid-line{position:absolute;left:0;right:0;height:1px;pointer-events:none;background:var(--line);opacity:0.6;}
+  .day-week-line{position:absolute;top:0;bottom:0;width:1px;background:var(--line);opacity:0.8;pointer-events:none;}
+  .day-chart-col-fluid{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end;pointer-events:none;position:relative;z-index:1;}
   .day-chart-pair-fluid{display:flex;align-items:flex-end;justify-content:center;gap:1px;width:100%;height:70px;}
   .day-bar-fluid{width:40%;max-width:3px;border-radius:2px;}
   .day-tick-empty{width:3px;height:3px;border-radius:50%;background:var(--line);}
@@ -1306,19 +1308,25 @@
       const gastoNormal = dayTx.filter(t=>t.type==='Gasto' && !t.extraordinary).reduce((s,t)=>s+t.amount,0);
       const gastoExtra = dayTx.filter(t=>t.type==='Gasto' && t.extraordinary).reduce((s,t)=>s+t.amount,0);
       const ingreso = dayTx.filter(t=>t.type==='Ingreso').reduce((s,t)=>s+t.amount,0);
-      fiscalDayData.push({ label: String(new Date(d+'T00:00:00').getDate()), gastoNormal, gastoExtra, gastoTotal: gastoNormal+gastoExtra, ingreso });
+      fiscalDayData.push({ date: d, label: String(new Date(d+'T00:00:00').getDate()), gastoNormal, gastoExtra, gastoTotal: gastoNormal+gastoExtra, ingreso });
     }
-    // escala logarítmica de verdad, con anclas fijas por década (10€, 100€, 1000€...), cada salto ocupa el mismo espacio.
-    // el número de décadas se ajusta a tus datos reales, para no dejar el gráfico medio vacío.
-    const maxFiscalVal = Math.max(...fiscalDayData.map(d=>d.gastoNormal),1);
-    const fiscalDecades = Math.max(1, Math.ceil(Math.log10(Math.max(maxFiscalVal,10))));
-    function logHFiscal(v){
-      if(v<=0) return 0;
-      const h = (Math.log10(v)/fiscalDecades)*100;
-      return Math.min(100, Math.max(3, h));
+    // escala LINEAL fija, de 0 a 300€ en pasos de 60. Lo que se pasa de 300 no sube más de altura,
+    // en vez de eso la barra se hace más gorda cuanto más se pase.
+    const FISCAL_CAP = 300;
+    function logHFiscal(v){ return v>0 ? Math.min(100, (v/FISCAL_CAP)*100) : 0; }
+    function fiscalBarWidthPx(v){
+      if(v<=FISCAL_CAP) return 3;
+      const extra = (v-FISCAL_CAP)/FISCAL_CAP; // cuánto se pasa, en "veces 300"
+      return Math.min(9, 3 + extra*3);
     }
     const hasFiscalData = fiscalDayData.some(d=>d.gastoTotal>0 || d.ingreso>0);
-    const fiscalTicks = [0, ...Array.from({length:fiscalDecades}, (_,i)=>Math.pow(10,i+1))];
+    const fiscalTicks = [0,60,120,180,240,300];
+    // líneas verticales finas entre domingo y lunes, para marcar el cambio de semana
+    const weekBoundaries = [];
+    fiscalDayData.forEach((dd,i)=>{
+      const dow = new Date(dd.date+'T00:00:00').getDay(); // 0 = domingo
+      if(dow===0 && i < fiscalDayData.length-1) weekBoundaries.push(i+1);
+    });
     lastFiscalChart = hasFiscalData ? { days: fiscalDayData } : null;
     html += `<div class="chart-wrap">
       <div class="chart-title">Gasto diario — ${monthLabel(nominaCurrentLabelMonth())} <span style="font-weight:400;text-transform:none;letter-spacing:0;">(arrastra para ver cada día)</span></div>
@@ -1326,15 +1334,17 @@
       <div class="day-chart-row">
         <div class="day-chart-axis">
           <div class="day-axis-inner">
-            ${fiscalTicks.map(t=>`<div class="day-axis-tick" style="bottom:${logHFiscal(t)}%;">${fmtWhole(t)}€</div>`).join('')}
+            ${fiscalTicks.map(t=>`<div class="day-axis-tick" style="bottom:${logHFiscal(t)}%;">${t===300?'300€+':fmtWhole(t)+'€'}</div>`).join('')}
           </div>
         </div>
         <div class="day-chart-bars-fluid" id="fiscalChartBars">
+          ${fiscalTicks.map(t=>`<div class="day-grid-line day-grid-major" style="bottom:${logHFiscal(t)}%;"></div>`).join('')}
+          ${weekBoundaries.map(i=>`<div class="day-week-line" style="left:${(i/fiscalDayData.length*100).toFixed(3)}%;"></div>`).join('')}
           ${fiscalDayData.map((dd,i)=>`
             <div class="day-chart-col-fluid" data-idx="${i}">
               <div class="day-chart-pair-fluid">
-                <div class="day-bar-fluid day-bar-out" style="height:${logHFiscal(dd.gastoTotal)}%;"></div>
-                <div class="day-bar-fluid day-bar-in" style="height:${logHFiscal(dd.ingreso)}%;"></div>
+                <div class="day-bar-fluid day-bar-out" style="height:${logHFiscal(dd.gastoTotal)}%;width:${fiscalBarWidthPx(dd.gastoTotal)}px;max-width:none;"></div>
+                <div class="day-bar-fluid day-bar-in" style="height:${logHFiscal(dd.ingreso)}%;width:${fiscalBarWidthPx(dd.ingreso)}px;max-width:none;"></div>
               </div>
               <div class="day-chart-lbl">${dd.label}</div>
             </div>`).join('')}
