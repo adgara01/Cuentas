@@ -64,8 +64,12 @@
   .battery-sub{font-size:10.5px;color:var(--ink-soft);margin-top:8px;line-height:1.4;}
   .battery-extra-note{font-size:9.5px;color:var(--muted);margin-top:4px;line-height:1.3;}
   /* ---------- gráfico diario a ancho completo: las barras se reparten el ancho, siempre caben todos los días ---------- */
-  .day-chart-bars-fluid{display:flex;align-items:flex-end;height:90px;gap:2px;position:relative;}
-  .day-chart-col-fluid{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end;}
+  .day-chart-row{display:flex;align-items:flex-end;gap:8px;}
+  .day-chart-axis{width:28px;flex-shrink:0;display:flex;flex-direction:column;justify-content:flex-end;height:90px;}
+  .day-axis-inner{position:relative;height:90px;}
+  .day-axis-tick{position:absolute;left:0;right:2px;transform:translateY(50%);font-size:7.5px;color:var(--muted);white-space:nowrap;text-align:right;font-weight:600;}
+  .day-chart-bars-fluid{display:flex;align-items:flex-end;height:90px;gap:2px;position:relative;flex:1;min-width:0;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
+  .day-chart-col-fluid{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end;pointer-events:none;}
   .day-chart-pair-fluid{display:flex;align-items:flex-end;justify-content:center;gap:1px;width:100%;height:70px;}
   .day-bar-fluid{width:40%;max-width:3px;border-radius:2px;}
   .day-tick-empty{width:3px;height:3px;border-radius:50%;background:var(--line);}
@@ -361,6 +365,7 @@
     border:none;border-bottom:2px solid var(--line);background:transparent;color:var(--green);padding:4px;flex-shrink:0;
   }
   .acc-manage-row{display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-top:1px solid var(--line);gap:8px;}
+  .acc-manage-btn{cursor:pointer;}
   .acc-manage-row > div:first-child{flex:1;min-width:0;overflow:hidden;}
   .acc-manage-row input{flex-shrink:0;}
   .acc-manage-row:first-child{border-top:none;}
@@ -1308,18 +1313,28 @@
     const maxFiscalVal = Math.max(...fiscalDayData.map(d=>Math.max(d.gastoNormal,d.ingreso)),1);
     function logHFiscal(v){ return v>0 ? Math.min(100,Math.max(4,Math.pow(v/maxFiscalVal,0.5)*100)) : 0; }
     const hasFiscalData = fiscalDayData.some(d=>d.gastoTotal>0 || d.ingreso>0);
+    const fiscalTicks = [0, maxFiscalVal*0.25, maxFiscalVal*0.64, maxFiscalVal]; // 0.25→50% y 0.64→80% de altura en la escala raíz, reparto visual más parejo
+    lastFiscalChart = hasFiscalData ? { days: fiscalDayData } : null;
     html += `<div class="chart-wrap">
-      <div class="chart-title">Gasto diario — ${monthLabel(nominaCurrentLabelMonth())}</div>
+      <div class="chart-title">Gasto diario — ${monthLabel(nominaCurrentLabelMonth())} <span style="font-weight:400;text-transform:none;letter-spacing:0;">(arrastra para ver cada día)</span></div>
       ${hasFiscalData ? `
-      <div class="day-chart-bars-fluid">
-        ${fiscalDayData.map((dd,i)=>`
-          <div class="day-chart-col-fluid">
-            <div class="day-chart-pair-fluid">
-              <div class="day-bar-fluid day-bar-out" style="height:${logHFiscal(dd.gastoTotal)}%;" title="Gasto ${fmt(dd.gastoTotal)}€"></div>
-              <div class="day-bar-fluid day-bar-in" style="height:${logHFiscal(dd.ingreso)}%;" title="Ingreso ${fmt(dd.ingreso)}€"></div>
-            </div>
-            <div class="day-chart-lbl">${dd.label}</div>
-          </div>`).join('')}
+      <div class="day-chart-row">
+        <div class="day-chart-axis">
+          <div class="day-axis-inner">
+            ${fiscalTicks.map(t=>`<div class="day-axis-tick" style="bottom:${logHFiscal(t)}%;">${fmtWhole(t)}€</div>`).join('')}
+          </div>
+        </div>
+        <div class="day-chart-bars-fluid" id="fiscalChartBars">
+          ${fiscalDayData.map((dd,i)=>`
+            <div class="day-chart-col-fluid" data-idx="${i}">
+              <div class="day-chart-pair-fluid">
+                <div class="day-bar-fluid day-bar-out" style="height:${logHFiscal(dd.gastoTotal)}%;"></div>
+                <div class="day-bar-fluid day-bar-in" style="height:${logHFiscal(dd.ingreso)}%;"></div>
+              </div>
+              <div class="day-chart-lbl">${dd.label}</div>
+            </div>`).join('')}
+          <div class="chart-tooltip" id="fiscalTooltip" style="display:none;"></div>
+        </div>
       </div>` : `
       <div class="day-chart-empty">Todavía no hay movimientos en este periodo.</div>`}
     </div>`;
@@ -1497,6 +1512,7 @@
       renderDashboard();
     };
     $app.querySelectorAll('.mv-line').forEach(el=>{ el.onclick = ()=> openEditSheet(el.dataset.id, renderDashboard); });
+    wireFiscalChartInteractivity();
   }
 
   // ================= OBJETIVOS Y AJUSTES =================
@@ -1567,6 +1583,7 @@
   }
 
   let lastSavingsChart = null;
+  let lastFiscalChart = null;
   function niceAxisTicks(minV, maxV, count){
     const span = maxV - minV || 1;
     const step = span / (count-1);
@@ -1695,6 +1712,37 @@
     svg.addEventListener('selectstart', e=> e.preventDefault());
   }
 
+  function wireFiscalChartInteractivity(){
+    const d = lastFiscalChart;
+    const bars = document.getElementById('fiscalChartBars');
+    if(!d || !bars) return;
+    const tooltip = document.getElementById('fiscalTooltip');
+    function showAt(clientX){
+      const rect = bars.getBoundingClientRect();
+      const frac = Math.max(0, Math.min(0.9999, (clientX - rect.left) / rect.width));
+      const idx = Math.floor(frac * d.days.length);
+      const day = d.days[idx];
+      if(!day) return;
+      const px = (idx+0.5)/d.days.length * rect.width;
+      let html = `<b>Día ${day.label}</b>`;
+      if(day.gastoTotal>0) html += `<br>Gasto: ${fmt(day.gastoTotal)}€`;
+      if(day.ingreso>0) html += `<br>Ingreso: ${fmt(day.ingreso)}€`;
+      if(day.gastoTotal<=0 && day.ingreso<=0) html += `<br>Sin movimientos`;
+      tooltip.innerHTML = html;
+      tooltip.style.display = 'block';
+      tooltip.style.left = px+'px';
+    }
+    function hide(){ tooltip.style.display = 'none'; }
+    bars.onpointermove = e=> showAt(e.clientX);
+    bars.onpointerdown = e=> showAt(e.clientX);
+    bars.onpointerleave = hide;
+    bars.addEventListener('touchstart', e=>{ if(e.touches[0]){ e.preventDefault(); showAt(e.touches[0].clientX); } }, {passive:false});
+    bars.addEventListener('touchmove', e=>{ if(e.touches[0]){ e.preventDefault(); showAt(e.touches[0].clientX); } }, {passive:false});
+    bars.ontouchend = hide;
+    bars.oncontextmenu = e=> e.preventDefault();
+    bars.addEventListener('selectstart', e=> e.preventDefault());
+  }
+
   function forecastMonths(){
     const start = nominaCurrentLabelMonth();
     const arr = [];
@@ -1728,14 +1776,11 @@
     let html = headerHtml('Objetivos y ajustes');
 
     html += collapsibleCard('cuentasEditar', 'Cuentas', `
-      <div class="empty-note" style="padding:0 0 12px;text-align:left;">Toca el nombre para cambiarlo, o crea cuentas nuevas — automáticas (se calculan solas) o manuales (las actualizas tú).</div>
+      <div class="empty-note" style="padding:0 0 12px;text-align:left;">Toca una cuenta para renombrarla o eliminarla, o crea las que quieras.</div>
       ${state.accounts.map(a=>`
-        <div class="acc-manage-row">
-          <div class="acc-name-btn" data-acc="${a.id}">${a.name} <span style="color:var(--muted);">✎</span></div>
-          <div style="display:flex;align-items:center;gap:10px;">
-            <div class="am-type">${a.manual?'manual':a.type}</div>
-            <span class="row-del acc-del-btn" data-acc="${a.id}">✕</span>
-          </div>
+        <div class="acc-manage-row acc-manage-btn" data-acc="${a.id}">
+          <div class="acc-name-btn">${a.name} <span style="color:var(--muted);">✎</span></div>
+          <div class="am-type">${a.manual?'manual':a.type}</div>
         </div>
       `).join('')}
       <button class="btn-ghost" id="addAccBtn" style="margin-top:6px;">+ Añadir cuenta</button>
@@ -1978,38 +2023,82 @@
       };
     });
     document.getElementById('addAccBtn').onclick = ()=>{
-      const name = prompt('Nombre de la cuenta:');
-      if(!name || !name.trim()) return;
-      const isAhorro = confirm('¿Es una cuenta de ahorro? Aceptar = ahorro, Cancelar = corriente');
-      const isManual = isAhorro ? confirm('¿El saldo lo actualizas tú a mano (ej. inversión)? Aceptar = manual, Cancelar = se calcula solo') : false;
-      state.accounts.push({id:uid(), name:name.trim(), type:isAhorro?'ahorro':'corriente', manual:isManual, initial:0, manualBalance:0, expected:0});
-      saveState(); renderAjustes();
+      let newType = 'corriente';
+      let newManual = false;
+      function drawNewAccSheet(){
+        $sheet.innerHTML = `
+          <h2>Nueva cuenta <span class="close-x" id="closeX">✕</span></h2>
+          <div class="field"><label>Nombre</label><input type="text" id="newAccName" placeholder="ej. Revolut"></div>
+          <div class="field">
+            <label>Tipo</label>
+            <div class="seg" id="newAccTypeSeg">
+              <button data-t="corriente" class="${newType==='corriente'?'active':''}">Corriente</button>
+              <button data-t="ahorro" class="${newType==='ahorro'?'active':''}">Ahorro</button>
+            </div>
+          </div>
+          ${newType==='ahorro' ? `
+          <div class="field">
+            <label>¿Cómo se actualiza el saldo?</label>
+            <div class="seg" id="newAccManualSeg">
+              <button data-m="auto" class="${!newManual?'active':''}">Automático</button>
+              <button data-m="manual" class="${newManual?'active':''}">Manual</button>
+            </div>
+          </div>` : ''}
+          <button class="btn-primary" id="newAccCreateBtn">Crear cuenta</button>
+        `;
+        $overlay.classList.add('show');
+        document.getElementById('closeX').onclick = ()=> $overlay.classList.remove('show');
+        document.querySelectorAll('#newAccTypeSeg button').forEach(b=>{
+          b.onclick = ()=>{ newType = b.dataset.t; if(newType==='corriente') newManual=false; drawNewAccSheet(); };
+        });
+        const manualSeg = document.getElementById('newAccManualSeg');
+        if(manualSeg) manualSeg.querySelectorAll('button').forEach(b=>{
+          b.onclick = ()=>{ newManual = b.dataset.m==='manual'; drawNewAccSheet(); };
+        });
+        document.getElementById('newAccCreateBtn').onclick = ()=>{
+          const name = document.getElementById('newAccName').value.trim();
+          if(!name){ showToast('Escribe un nombre'); return; }
+          state.accounts.push({id:uid(), name, type:newType, manual:newManual, initial:0, manualBalance:0, expected:0});
+          saveState();
+          $overlay.classList.remove('show');
+          showToast('Cuenta creada');
+          renderAjustes();
+        };
+      }
+      drawNewAccSheet();
     };
-    $app.querySelectorAll('.acc-name-btn').forEach(el=>{
-      el.onclick = ()=>{
-        const acc = state.accounts.find(a=>a.id===el.dataset.acc);
+    $app.querySelectorAll('.acc-manage-btn').forEach(row=>{
+      row.onclick = ()=>{
+        const acc = state.accounts.find(a=>a.id===row.dataset.acc);
         if(!acc) return;
-        const newName = prompt('Nombre de la cuenta:', acc.name);
-        if(!newName || !newName.trim() || newName.trim()===acc.name) return;
-        acc.name = newName.trim();
-        saveState();
-        renderAjustes();
-      };
-    });
-    $app.querySelectorAll('.acc-del-btn').forEach(el=>{
-      el.onclick = ()=>{
-        const acc = state.accounts.find(a=>a.id===el.dataset.acc);
-        if(!acc) return;
-        if(state.accounts.length<=1){ showToast('Necesitas al menos una cuenta'); return; }
-        const linked = state.transactions.filter(t=>t.account===acc.id || t.toAccount===acc.id).length;
-        const msg = linked>0
-          ? '¿Eliminar "'+acc.name+'"? Tiene '+linked+' movimiento(s) asociados que se quedarán apuntando a una cuenta que ya no existe.'
-          : '¿Eliminar "'+acc.name+'"?';
-        if(!confirm(msg)) return;
-        state.accounts = state.accounts.filter(a=>a.id!==acc.id);
-        saveState();
-        showToast('Cuenta eliminada');
-        renderAjustes();
+        $sheet.innerHTML = `
+          <h2>${acc.name} <span class="close-x" id="closeX">✕</span></h2>
+          <button class="btn-primary" id="accRenameBtn">Renombrar</button>
+          <button class="btn-secondary" id="accDeleteBtn">Eliminar cuenta</button>
+        `;
+        $overlay.classList.add('show');
+        document.getElementById('closeX').onclick = ()=> $overlay.classList.remove('show');
+        document.getElementById('accRenameBtn').onclick = ()=>{
+          const newName = prompt('Nombre de la cuenta:', acc.name);
+          $overlay.classList.remove('show');
+          if(!newName || !newName.trim() || newName.trim()===acc.name) return;
+          acc.name = newName.trim();
+          saveState();
+          renderAjustes();
+        };
+        document.getElementById('accDeleteBtn').onclick = ()=>{
+          if(state.accounts.length<=1){ showToast('Necesitas al menos una cuenta'); return; }
+          const linked = state.transactions.filter(t=>t.account===acc.id || t.toAccount===acc.id).length;
+          const msg = linked>0
+            ? '¿Eliminar "'+acc.name+'"? Tiene '+linked+' movimiento(s) asociados que se quedarán apuntando a una cuenta que ya no existe.'
+            : '¿Eliminar "'+acc.name+'"?';
+          if(!confirm(msg)) return;
+          state.accounts = state.accounts.filter(a=>a.id!==acc.id);
+          saveState();
+          $overlay.classList.remove('show');
+          showToast('Cuenta eliminada');
+          renderAjustes();
+        };
       };
     });
     $app.querySelectorAll('#renameGastoChips .fchip, #renameIngresoChips .fchip').forEach(chip=>{
@@ -2017,39 +2106,85 @@
         const listName = chip.dataset.list;
         const idx = parseInt(chip.dataset.idx,10);
         const list = state[listName];
-        const oldName = list[idx];
-        const newName = prompt('Nuevo nombre para "'+oldName+'":', oldName);
-        if(!newName || !newName.trim() || newName.trim()===oldName) return;
-        const trimmed = newName.trim();
-        if(list.includes(trimmed)){ showToast('Ya existe una categoría con ese nombre'); return; }
-        list[idx] = trimmed;
-        state.transactions.forEach(t=>{ if(t.category===oldName) t.category = trimmed; });
-        saveState();
-        showToast('Categoría renombrada');
-        renderAjustes();
+        const name = list[idx];
+        $sheet.innerHTML = `
+          <h2>${name} <span class="close-x" id="closeX">✕</span></h2>
+          <button class="btn-primary" id="catRenameBtn">Renombrar</button>
+          <button class="btn-secondary" id="catDeleteBtn">Eliminar categoría</button>
+        `;
+        $overlay.classList.add('show');
+        document.getElementById('closeX').onclick = ()=> $overlay.classList.remove('show');
+        document.getElementById('catRenameBtn').onclick = ()=>{
+          const newName = prompt('Nuevo nombre para "'+name+'":', name);
+          $overlay.classList.remove('show');
+          if(!newName || !newName.trim() || newName.trim()===name) return;
+          const trimmed = newName.trim();
+          if(list.includes(trimmed)){ showToast('Ya existe una categoría con ese nombre'); return; }
+          list[idx] = trimmed;
+          state.transactions.forEach(t=>{ if(t.category===name) t.category = trimmed; });
+          if(listName==='categories'){
+            state.expenseGroups.forEach(g=>{ g.categories = g.categories.map(c=>c===name?trimmed:c); });
+          }
+          saveState();
+          showToast('Categoría renombrada');
+          renderAjustes();
+        };
+        document.getElementById('catDeleteBtn').onclick = ()=>{
+          const linked = state.transactions.filter(t=>t.category===name).length;
+          const msg = linked>0
+            ? '¿Eliminar "'+name+'"? Tiene '+linked+' movimiento(s) con esta categoría, que se quedarán con una categoría que ya no existe en la lista.'
+            : '¿Eliminar "'+name+'"?';
+          if(!confirm(msg)){ return; }
+          list.splice(idx,1);
+          if(listName==='categories'){
+            state.expenseGroups.forEach(g=>{ g.categories = g.categories.filter(c=>c!==name); });
+          }
+          saveState();
+          $overlay.classList.remove('show');
+          showToast('Categoría eliminada');
+          renderAjustes();
+        };
       };
     });
     const addCatGastoBtn = document.getElementById('addCatGastoBtn');
     if(addCatGastoBtn) addCatGastoBtn.onclick = ()=>{
-      const name = prompt('Nombre de la categoría de gasto:');
-      if(!name || !name.trim()) return;
-      const trimmed = name.trim();
-      if(state.categories.includes(trimmed)){ showToast('Ya existe'); return; }
-      state.categories.push(trimmed);
-      saveState();
-      showToast('Categoría añadida');
-      renderAjustes();
+      $sheet.innerHTML = `
+        <h2>Nueva categoría de gasto <span class="close-x" id="closeX">✕</span></h2>
+        <div class="field"><label>Nombre</label><input type="text" id="newCatName" placeholder="ej. Mascota"></div>
+        <button class="btn-primary" id="newCatCreateBtn">Crear categoría</button>
+      `;
+      $overlay.classList.add('show');
+      document.getElementById('closeX').onclick = ()=> $overlay.classList.remove('show');
+      document.getElementById('newCatCreateBtn').onclick = ()=>{
+        const trimmed = document.getElementById('newCatName').value.trim();
+        if(!trimmed){ showToast('Escribe un nombre'); return; }
+        if(state.categories.includes(trimmed)){ showToast('Ya existe'); return; }
+        state.categories.push(trimmed);
+        saveState();
+        $overlay.classList.remove('show');
+        showToast('Categoría añadida');
+        renderAjustes();
+      };
     };
     const addCatIngresoBtn = document.getElementById('addCatIngresoBtn');
     if(addCatIngresoBtn) addCatIngresoBtn.onclick = ()=>{
-      const name = prompt('Nombre de la categoría de ingreso:');
-      if(!name || !name.trim()) return;
-      const trimmed = name.trim();
-      if(state.incomeCategories.includes(trimmed)){ showToast('Ya existe'); return; }
-      state.incomeCategories.push(trimmed);
-      saveState();
-      showToast('Categoría añadida');
-      renderAjustes();
+      $sheet.innerHTML = `
+        <h2>Nueva categoría de ingreso <span class="close-x" id="closeX">✕</span></h2>
+        <div class="field"><label>Nombre</label><input type="text" id="newCatName" placeholder="ej. Devolución"></div>
+        <button class="btn-primary" id="newCatCreateBtn">Crear categoría</button>
+      `;
+      $overlay.classList.add('show');
+      document.getElementById('closeX').onclick = ()=> $overlay.classList.remove('show');
+      document.getElementById('newCatCreateBtn').onclick = ()=>{
+        const trimmed = document.getElementById('newCatName').value.trim();
+        if(!trimmed){ showToast('Escribe un nombre'); return; }
+        if(state.incomeCategories.includes(trimmed)){ showToast('Ya existe'); return; }
+        state.incomeCategories.push(trimmed);
+        saveState();
+        $overlay.classList.remove('show');
+        showToast('Categoría añadida');
+        renderAjustes();
+      };
     };
     $app.querySelectorAll('.group-name-btn').forEach(el=>{
       el.onclick = ()=>{
