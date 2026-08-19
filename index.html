@@ -60,8 +60,14 @@
   .battery-val{font-size:24px;font-weight:800;margin-top:4px;line-height:1.1;white-space:nowrap;}
   .battery-bar-bg{height:14px;border-radius:7px;background:var(--bg);position:relative;}
   .cat-budget-bars{display:flex;align-items:flex-end;gap:16px;padding:16px 4px 0;min-width:min-content;}
+  .cat-budget-list{display:flex;flex-direction:column;gap:12px;padding-top:10px;}
+  .cat-budget-row{display:flex;flex-direction:column;gap:5px;}
+  .cat-budget-top{display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:700;color:var(--ink-soft);}
+  .cat-budget-bar-bg{height:9px;border-radius:5px;background:var(--bg);overflow:hidden;}
+  .cat-budget-bar-fill{height:100%;border-radius:5px;}
   .cat-budget-col{display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:40px;}
-  .cat-budget-val{font-size:8px;font-weight:700;margin-bottom:5px;white-space:nowrap;color:var(--ink-soft);}
+  .cat-budget-val{font-size:8px;font-weight:700;margin-bottom:0;white-space:nowrap;color:var(--ink-soft);}
+  .cat-budget-budget{font-size:7px;font-weight:600;margin-bottom:5px;white-space:nowrap;color:var(--muted);}
   .cat-budget-track{width:22px;border-radius:4px;background:var(--red-bg);position:relative;overflow:hidden;display:flex;align-items:flex-end;}
   .cat-budget-fill{width:100%;border-radius:3px;}
   .cat-budget-lbl{font-size:8.5px;color:var(--muted);margin-top:6px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:44px;}
@@ -171,6 +177,9 @@
   .catbudget-row{margin-bottom:18px;}
   .catbudget-row-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
   .catbudget-name{font-weight:700;font-size:13.5px;color:var(--ink);}
+  .catbudget-summary-sticky{position:sticky;top:0;z-index:5;background:var(--cell);display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-radius:12px;background:var(--bg);margin-top:4px;}
+  .catbudget-summary-lbl{font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.4px;margin-right:4px;}
+  .catbudget-summary-sticky .mono{font-weight:800;font-size:14px;}
   .cat-budget-num{width:64px;text-align:right;border:1.5px solid var(--line);border-radius:8px;padding:5px 8px;font-size:13px;font-weight:700;font-family:inherit;background:var(--cell);}
   .cat-budget-slider{-webkit-appearance:none;appearance:none;width:100%;height:8px;border-radius:5px;outline:none;accent-color:var(--green);}
   .cat-budget-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:20px;height:20px;border-radius:50%;background:#fff;border:3px solid var(--green);box-shadow:0 1px 4px rgba(0,0,0,0.25);cursor:pointer;}
@@ -263,6 +272,8 @@
   .chart-wrap svg,.chart-wrap svg *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
   .chart-wrap svg text{pointer-events:none;}
   .chart-title{font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--muted);font-weight:700;margin-bottom:2px;padding:0 4px;}
+  .chart-title-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;}
+  .gasto-view-toggle{font-size:9.5px;font-weight:700;color:var(--green);cursor:pointer;padding:2px 4px;white-space:nowrap;}
   .chart-subtitle{font-size:10.5px;color:var(--muted);font-weight:500;margin-bottom:12px;padding:0 4px;text-transform:none;letter-spacing:0;}
   .chart-bars{display:flex;align-items:flex-end;gap:7px;min-height:70px;padding:8px 2px 0;}
   .chart-bar-item{display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:36px;}
@@ -486,6 +497,7 @@
   let dashFilters = { types: new Set(), accounts: new Set(), categories: new Set(), dateMode:'nomina', nominaLabelMonth:null, customStart:null, customEnd:null };
   let dashFiltersOpen = false;
   let presetActive = false;
+  let gastoChartMode = 'bars'; // 'bars' | 'battery'
   let ajustesOpen = { cuentasEditar:false, cuentas:false, categorias:false, grupos:false, payday:true, prevision:true, preset:false, logGasto:false, logIngreso:false, sync:true, export:false };
 
   const $app = document.getElementById('app');
@@ -740,7 +752,11 @@
     function draw(){
       $sheet.innerHTML = `
         <h2>Nómina ${monthLabel(m)} <span class="close-x" id="closeX">✕</span></h2>
-        <div class="empty-note" style="padding:0 0 14px;text-align:left;">Arrastra para repartir tu presupuesto de gasto (${fmt(budget)}€) entre categorías — nunca te dejará pasarte. Si quieres ir al detalle, toca el número.</div>
+        <div class="catbudget-summary-sticky">
+          <div><span class="catbudget-summary-lbl">Repartido</span> <span class="mono" id="catBudgetAssigned">${fmt(assignedTotal())}€</span></div>
+          <div><span class="catbudget-summary-lbl">Queda</span> <span class="mono" id="catBudgetRemaining" style="color:${assignedTotal()>budget?'var(--red)':'var(--green)'};">${fmt(budget-assignedTotal())}€</span></div>
+        </div>
+        <div class="empty-note" style="padding:10px 0 14px;text-align:left;">Arrastra para repartir tu presupuesto de gasto (${fmt(budget)}€) entre categorías — nunca te dejará pasarte. Si quieres ir al detalle, toca el número.</div>
         ${state.categories.map(c=>{
           const v = parseFloat(cb[c])||0;
           const pct = budget>0 ? (v/budget)*100 : 0;
@@ -753,14 +769,6 @@
             <input type="range" class="cat-budget-slider" data-cat="${c}" min="0" max="${Math.max(budget,1)}" step="1" value="${v}" style="background:linear-gradient(to right, var(--green) ${pct}%, var(--bg) ${pct}%);">
           </div>`;
         }).join('')}
-        <div class="exp-row" style="border-top:2px solid var(--line);margin-top:12px;padding-top:12px;">
-          <div class="exp-name" style="font-weight:700;">Repartido</div>
-          <div class="mono" id="catBudgetAssigned" style="font-weight:800;">${fmt(assignedTotal())}€</div>
-        </div>
-        <div class="exp-row">
-          <div class="exp-name" style="font-weight:700;color:${assignedTotal()>budget?'var(--red)':'var(--ink)'};">Queda</div>
-          <div class="mono" id="catBudgetRemaining" style="font-weight:800;color:${assignedTotal()>budget?'var(--red)':'var(--green)'};">${fmt(budget-assignedTotal())}€</div>
-        </div>
       `;
       $overlay.classList.add('show');
       document.getElementById('closeX').onclick = ()=> $overlay.classList.remove('show');
@@ -1516,8 +1524,11 @@
       .sort((a,b)=> (parseFloat(catBudgets[b])||0) - (parseFloat(catBudgets[a])||0));
     const maxBudget = Math.max(...budgetedCats.map(c=>parseFloat(catBudgets[c])||0),1);
     html += `<div class="chart-wrap" style="min-height:170px;">
-      <div class="chart-title">Gastos</div>
-      ${budgetedCats.length ? `
+      <div class="chart-title-row">
+        <div class="chart-title" style="margin:0;padding:0;">Gastos</div>
+        ${budgetedCats.length ? `<span class="gasto-view-toggle" id="gastoViewToggle">${gastoChartMode==='bars'?'Ver batería':'Ver barras'}</span>` : ''}
+      </div>
+      ${budgetedCats.length ? (gastoChartMode==='bars' ? `
       <div style="overflow-x:auto;">
         <div class="cat-budget-bars">
           ${budgetedCats.map(cat=>{
@@ -1528,7 +1539,8 @@
             const over = spent>budget;
             const color = over ? 'var(--red)' : (pct>85 ? 'var(--amber)' : 'var(--red)');
             return `<div class="cat-budget-col">
-              <div class="cat-budget-val mono">${fmt(spent)}€</div>
+              <div class="cat-budget-val mono">${fmtWhole(spent)}€</div>
+              <div class="cat-budget-budget mono">/${fmtWhole(budget)}€</div>
               <div class="cat-budget-track" style="height:${trackH}px;">
                 <div class="cat-budget-fill" style="height:${Math.max(3,pct)}%;background:${color};"></div>
               </div>
@@ -1537,6 +1549,19 @@
           }).join('')}
         </div>
       </div>` : `
+      <div class="cat-budget-list">
+        ${budgetedCats.map(cat=>{
+          const budget = parseFloat(catBudgets[cat])||0;
+          const spent = txFiscal.filter(t=>t.type==='Gasto' && t.category===cat).reduce((s,t)=>s+t.amount,0);
+          const pct = budget>0 ? Math.min(100,(spent/budget)*100) : (spent>0?100:0);
+          const over = spent>budget;
+          const color = over ? 'var(--red)' : (pct>85 ? 'var(--amber)' : 'var(--green)');
+          return `<div class="cat-budget-row">
+            <div class="cat-budget-top"><span>${cat}</span><span class="mono">${fmtWhole(spent)}€ / ${fmtWhole(budget)}€</span></div>
+            <div class="cat-budget-bar-bg"><div class="cat-budget-bar-fill" style="width:${Math.max(3,pct)}%;background:${color};"></div></div>
+          </div>`;
+        }).join('')}
+      </div>`) : `
       <div class="chart-bars">
         ${gasEntries.length ? gasEntries.map(([cat,amt])=>`
           <div class="chart-bar-item">
@@ -1645,6 +1670,8 @@
       presetActive = false;
       renderDashboard();
     }
+    const gastoToggle = document.getElementById('gastoViewToggle');
+    if(gastoToggle) gastoToggle.onclick = ()=>{ gastoChartMode = gastoChartMode==='bars' ? 'battery' : 'bars'; renderDashboard(); };
     document.getElementById('filtersToggle').onclick = ()=>{ dashFiltersOpen = !dashFiltersOpen; renderDashboard(); };
     const quickClear = document.getElementById('quickClearFilter');
     if(quickClear) quickClear.onclick = (e)=>{
