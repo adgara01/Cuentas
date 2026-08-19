@@ -59,6 +59,12 @@
   .battery-lbl{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .battery-val{font-size:24px;font-weight:800;margin-top:4px;line-height:1.1;white-space:nowrap;}
   .battery-bar-bg{height:14px;border-radius:7px;background:var(--bg);position:relative;}
+  .cat-budget-bars{display:flex;align-items:flex-end;gap:16px;padding:16px 4px 0;min-width:min-content;}
+  .cat-budget-col{display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:40px;}
+  .cat-budget-val{font-size:8px;font-weight:700;margin-bottom:5px;white-space:nowrap;color:var(--ink-soft);}
+  .cat-budget-track{width:22px;border-radius:4px;background:var(--red-bg);position:relative;overflow:hidden;display:flex;align-items:flex-end;}
+  .cat-budget-fill{width:100%;border-radius:3px;}
+  .cat-budget-lbl{font-size:8.5px;color:var(--muted);margin-top:6px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:44px;}
   .battery-bar-bg::after{content:'';position:absolute;right:-5px;top:3px;width:4px;height:8px;background:var(--bg);border-radius:0 3px 3px 0;}
   .battery-bar-fill{height:100%;border-radius:7px;}
   .battery-sub{font-size:10.5px;color:var(--ink-soft);margin-top:8px;line-height:1.4;}
@@ -162,6 +168,12 @@
   }
   .seg button.active{background:var(--cell);color:var(--green);box-shadow:0 1px 4px rgba(20,20,25,0.1);}
   .field{margin-bottom:13px;}
+  .catbudget-row{margin-bottom:18px;}
+  .catbudget-row-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+  .catbudget-name{font-weight:700;font-size:13.5px;color:var(--ink);}
+  .cat-budget-num{width:64px;text-align:right;border:1.5px solid var(--line);border-radius:8px;padding:5px 8px;font-size:13px;font-weight:700;font-family:inherit;background:var(--cell);}
+  .cat-budget-slider{-webkit-appearance:none;appearance:none;width:100%;height:8px;border-radius:5px;outline:none;accent-color:var(--green);}
+  .cat-budget-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:20px;height:20px;border-radius:50%;background:#fff;border:3px solid var(--green);box-shadow:0 1px 4px rgba(0,0,0,0.25);cursor:pointer;}
   .field label{
     display:block;font-size:11.5px;color:var(--muted);
     margin-bottom:6px;font-weight:600;
@@ -232,6 +244,8 @@
   .preset-chip.active{background:var(--green);color:#fff;}
   .filter-label:first-of-type{margin-top:0;}
   .clear-filters{font-size:11.5px;text-transform:none;letter-spacing:0;color:var(--red);font-weight:700;cursor:pointer;}
+  .active-filter-pill{font-size:10.5px;font-weight:700;color:var(--green);background:var(--green-bg);padding:4px 8px;border-radius:999px;display:flex;align-items:center;gap:6px;white-space:nowrap;}
+  .active-filter-pill #quickClearFilter{color:var(--muted);font-weight:800;cursor:pointer;}
   .filter-chip-row{display:flex;flex-wrap:wrap;gap:7px;}
   .fchip{padding:7px 13px;background:var(--bg);border:none;border-radius:999px;font-size:12px;color:var(--ink-soft);cursor:pointer;white-space:nowrap;font-weight:600;}
   .fchip.active{background:var(--green);color:#fff;}
@@ -359,7 +373,7 @@
     text-align:right;padding:9px 8px;font-weight:700;
   }
   table.plan-table-fixed th:first-child{text-align:left;}
-  table.plan-table-fixed td{padding:7px 8px;border-top:1px solid var(--line);text-align:right;}
+  table.plan-table-fixed td{padding:7px 8px;border-top:1px solid var(--line);text-align:right;vertical-align:top;}
   table.plan-table-fixed td:first-child{text-align:left;color:var(--ink-soft);font-size:12px;font-weight:600;}
   table.plan-table-fixed td input{
     width:100%;text-align:right;font-size:12px;
@@ -693,6 +707,84 @@
   }
   function goalAmountForMonth(m){
     return incomeForMonth(m) * (goalPctForMonth(m)/100);
+  }
+  function gastoBudgetForMonth(m){
+    return Math.max(0, incomeForMonth(m) - goalAmountForMonth(m));
+  }
+  function openCategoryBudgetSheet(m){
+    if(!state.monthlyPlans[m]) state.monthlyPlans[m] = {};
+    if(!state.monthlyPlans[m].catBudget) state.monthlyPlans[m].catBudget = {};
+    const budget = gastoBudgetForMonth(m);
+    const cb = state.monthlyPlans[m].catBudget;
+    function assignedTotal(){ return state.categories.reduce((s,c)=>s+(parseFloat(cb[c])||0),0); }
+    function updateSummary(){
+      const assigned = assignedTotal();
+      const over = assigned>budget+0.005;
+      document.getElementById('catBudgetAssigned').textContent = fmt(assigned)+'€';
+      const remainEl = document.getElementById('catBudgetRemaining');
+      remainEl.textContent = fmt(budget-assigned)+'€';
+      remainEl.style.color = over ? 'var(--red)' : 'var(--green)';
+    }
+    function setCat(cat, rawVal){
+      const others = state.categories.filter(c=>c!==cat).reduce((s,c)=>s+(parseFloat(cb[c])||0),0);
+      const maxAllowed = Math.max(0, budget - others);
+      const v = Math.round(Math.min(maxAllowed, Math.max(0, rawVal)) * 100) / 100;
+      if(v>0) cb[cat] = v; else delete cb[cat];
+      const slider = $sheet.querySelector(`.cat-budget-slider[data-cat="${cat}"]`);
+      const num = $sheet.querySelector(`.cat-budget-num[data-cat="${cat}"]`);
+      if(slider) slider.value = v;
+      if(num) num.value = v>0 ? v : '';
+      updateSummary();
+      saveState();
+    }
+    function draw(){
+      $sheet.innerHTML = `
+        <h2>Nómina ${monthLabel(m)} <span class="close-x" id="closeX">✕</span></h2>
+        <div class="empty-note" style="padding:0 0 14px;text-align:left;">Arrastra para repartir tu presupuesto de gasto (${fmt(budget)}€) entre categorías — nunca te dejará pasarte. Si quieres ir al detalle, toca el número.</div>
+        ${state.categories.map(c=>{
+          const v = parseFloat(cb[c])||0;
+          const pct = budget>0 ? (v/budget)*100 : 0;
+          return `
+          <div class="catbudget-row">
+            <div class="catbudget-row-top">
+              <span class="catbudget-name">${c}</span>
+              <input type="number" step="1" min="0" class="cat-budget-num" data-cat="${c}" value="${v>0?v:''}" placeholder="0">
+            </div>
+            <input type="range" class="cat-budget-slider" data-cat="${c}" min="0" max="${Math.max(budget,1)}" step="1" value="${v}" style="background:linear-gradient(to right, var(--green) ${pct}%, var(--bg) ${pct}%);">
+          </div>`;
+        }).join('')}
+        <div class="exp-row" style="border-top:2px solid var(--line);margin-top:12px;padding-top:12px;">
+          <div class="exp-name" style="font-weight:700;">Repartido</div>
+          <div class="mono" id="catBudgetAssigned" style="font-weight:800;">${fmt(assignedTotal())}€</div>
+        </div>
+        <div class="exp-row">
+          <div class="exp-name" style="font-weight:700;color:${assignedTotal()>budget?'var(--red)':'var(--ink)'};">Queda</div>
+          <div class="mono" id="catBudgetRemaining" style="font-weight:800;color:${assignedTotal()>budget?'var(--red)':'var(--green)'};">${fmt(budget-assignedTotal())}€</div>
+        </div>
+      `;
+      $overlay.classList.add('show');
+      document.getElementById('closeX').onclick = ()=> $overlay.classList.remove('show');
+      $sheet.querySelectorAll('.cat-budget-slider').forEach(sl=>{
+        sl.oninput = ()=>{
+          const cat = sl.dataset.cat;
+          setCat(cat, parseFloat(sl.value)||0);
+          const v = parseFloat(cb[cat])||0;
+          const pct = budget>0 ? (v/budget)*100 : 0;
+          sl.style.background = `linear-gradient(to right, var(--green) ${pct}%, var(--bg) ${pct}%)`;
+        };
+      });
+      $sheet.querySelectorAll('.cat-budget-num').forEach(num=>{
+        num.oninput = ()=>{
+          const cat = num.dataset.cat;
+          setCat(cat, num.value==='' ? 0 : (parseFloat(num.value)||0));
+          const v = parseFloat(cb[cat])||0;
+          const pct = budget>0 ? (v/budget)*100 : 0;
+          const sl = $sheet.querySelector(`.cat-budget-slider[data-cat="${cat}"]`);
+          if(sl) sl.style.background = `linear-gradient(to right, var(--green) ${pct}%, var(--bg) ${pct}%)`;
+        };
+      });
+    }
+    draw();
   }
   function resolveDateRange(filters){
     const today = todayStr();
@@ -1257,6 +1349,20 @@
   }
 
   // ================= DASHBOARD =================
+  function activeFilterSummary(){
+    const parts = [];
+    if(dashFilters.dateMode==='custom' && dashFilters.customStart && dashFilters.customStart===dashFilters.customEnd){
+      const d = new Date(dashFilters.customStart+'T00:00:00');
+      parts.push('Día '+d.getDate()+' '+monthLabelShort(monthKey(dashFilters.customStart)));
+    } else if(dashFilters.dateMode==='custom'){
+      parts.push('Rango personalizado');
+    } else if(dashFilters.dateMode==='todo'){
+      parts.push('Todo el histórico');
+    }
+    const n = dashFilters.types.size + dashFilters.accounts.size + dashFilters.categories.size;
+    if(n>0) parts.push(n+' filtro'+(n>1?'s':''));
+    return parts.length ? parts.join(' · ') : null;
+  }
   function renderDashboard(){
     const range = resolveDateRange(dashFilters);
 
@@ -1404,8 +1510,33 @@
     tx.filter(t=>t.type==='Gasto').forEach(t=>{ byCatGas[t.category] = (byCatGas[t.category]||0)+t.amount; });
     const gasEntries = Object.entries(byCatGas).sort((a,b)=>b[1]-a[1]).slice(0,10);
     const maxGas = Math.max(...gasEntries.map(e=>e[1]),1);
+    const catBudgets = (state.monthlyPlans[planKey] && state.monthlyPlans[planKey].catBudget) || {};
+    const budgetedCats = state.categories
+      .filter(c=> (parseFloat(catBudgets[c])||0) > 0)
+      .sort((a,b)=> (parseFloat(catBudgets[b])||0) - (parseFloat(catBudgets[a])||0));
+    const maxBudget = Math.max(...budgetedCats.map(c=>parseFloat(catBudgets[c])||0),1);
     html += `<div class="chart-wrap" style="min-height:170px;">
       <div class="chart-title">Gastos</div>
+      ${budgetedCats.length ? `
+      <div style="overflow-x:auto;">
+        <div class="cat-budget-bars">
+          ${budgetedCats.map(cat=>{
+            const budget = parseFloat(catBudgets[cat])||0;
+            const spent = txFiscal.filter(t=>t.type==='Gasto' && t.category===cat).reduce((s,t)=>s+t.amount,0);
+            const trackH = Math.max(10, (budget/maxBudget)*70);
+            const pct = budget>0 ? Math.min(100,(spent/budget)*100) : (spent>0?100:0);
+            const over = spent>budget;
+            const color = over ? 'var(--red)' : (pct>85 ? 'var(--amber)' : 'var(--red)');
+            return `<div class="cat-budget-col">
+              <div class="cat-budget-val mono">${fmt(spent)}€</div>
+              <div class="cat-budget-track" style="height:${trackH}px;">
+                <div class="cat-budget-fill" style="height:${Math.max(3,pct)}%;background:${color};"></div>
+              </div>
+              <div class="cat-budget-lbl">${cat}</div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>` : `
       <div class="chart-bars">
         ${gasEntries.length ? gasEntries.map(([cat,amt])=>`
           <div class="chart-bar-item">
@@ -1413,15 +1544,19 @@
             <div class="chart-bar chart-bar-out" style="height:${Math.max(6,(amt/maxGas)*70)}px;"></div>
             <div class="chart-bar-lbl">${cat}</div>
           </div>`).join('') : `<div class="empty-note">Sin gastos.</div>`}
-      </div>
+      </div>`}
     </div>`;
     html += `</div>`;
 
     // ---- filtros colapsables ----
+    const filterSummary = activeFilterSummary();
     html += `<div class="cell">
       <div class="filters-toggle ${dashFiltersOpen?'open':''}" id="filtersToggle">
         <div class="section-title" style="margin:0;">Filtros</div>
-        <span class="chev">▾</span>
+        <div style="display:flex;align-items:center;gap:8px;">
+          ${(!dashFiltersOpen && filterSummary) ? `<span class="active-filter-pill" id="activeFilterPill">${filterSummary} <span id="quickClearFilter">✕</span></span>` : ''}
+          <span class="chev">▾</span>
+        </div>
       </div>
       <div class="filters-body" id="filtersBody" style="display:${dashFiltersOpen?'block':'none'};">
         <div style="text-align:right;margin-bottom:6px;"><span class="clear-filters" id="clearFilters">limpiar</span></div>
@@ -1511,6 +1646,13 @@
       renderDashboard();
     }
     document.getElementById('filtersToggle').onclick = ()=>{ dashFiltersOpen = !dashFiltersOpen; renderDashboard(); };
+    const quickClear = document.getElementById('quickClearFilter');
+    if(quickClear) quickClear.onclick = (e)=>{
+      e.stopPropagation();
+      dashFilters = { types:new Set(), accounts:new Set(), categories:new Set(), dateMode:'nomina', nominaLabelMonth:null, customStart:null, customEnd:null };
+      presetActive = false;
+      renderDashboard();
+    };
     document.querySelectorAll('.tipo-chip').forEach(c=>{
       c.onclick = ()=>{
         const val = c.dataset.val;
@@ -1914,7 +2056,7 @@
     `);
 
     html += collapsibleCard('prevision', 'Previsión mensual', `
-      <div class="empty-note" style="padding:0 0 12px;text-align:left;">El ingreso previsto es lo que usa el Dashboard para calcular el disponible desde el primer día del periodo. El % de ahorro se aplica sobre ese ingreso.</div>
+      <div class="empty-note" style="padding:0 0 12px;text-align:left;">El ingreso previsto es lo que usa el Dashboard para calcular el disponible desde el primer día del periodo. El % de ahorro se aplica sobre ese ingreso. Toca el mes para repartir el presupuesto entre categorías.</div>
       <div class="plan-table-wrap"><table class="plan-table-fixed">
         <thead><tr><th style="text-align:left;">Nómina</th><th>Ingreso</th><th>% ahorro</th></tr></thead>
         <tbody>
@@ -1922,8 +2064,8 @@
             const p = state.monthlyPlans[m] || {};
             const coverMonth = nextMonthKey(m);
             return `<tr>
-              <td>
-                <div style="font-weight:700;">Nómina ${monthLabel(m)}</div>
+              <td class="plan-month-btn" data-m="${m}" style="cursor:pointer;">
+                <div style="font-weight:700;">Nómina ${monthLabel(m)} <span style="color:var(--muted);">✎</span></div>
                 <div style="font-size:10px;color:var(--muted);font-weight:600;margin-top:2px;">para pasar ${monthLabel(coverMonth)}</div>
               </td>
               <td><input type="number" step="0.01" class="plan-income" data-m="${m}" value="${p.income!=null?p.income:''}" placeholder="0"></td>
@@ -2064,6 +2206,9 @@
       const pctVal = goalInput.value!=='' ? (parseFloat(goalInput.value)||0) : 0;
       hint.textContent = '≈ '+fmt(incomeVal*(pctVal/100))+'€';
     }
+    $app.querySelectorAll('.plan-month-btn').forEach(el=>{
+      el.onclick = ()=> openCategoryBudgetSheet(el.dataset.m);
+    });
     $app.querySelectorAll('.plan-income').forEach(inp=>{
       inp.addEventListener('input', ()=> updatePlanHint(inp.dataset.m));
       inp.onchange = e=>{
