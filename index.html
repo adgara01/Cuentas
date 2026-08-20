@@ -60,7 +60,8 @@
   .battery-val{font-size:24px;font-weight:800;margin-top:4px;line-height:1.1;white-space:nowrap;}
   .battery-bar-bg{height:14px;border-radius:7px;background:var(--bg);position:relative;}
   .cat-budget-bars{display:flex;align-items:flex-end;gap:16px;padding:16px 4px 0;min-width:min-content;}
-  .cat-budget-list{display:flex;flex-direction:column;gap:12px;padding-top:10px;}
+  .cat-budget-list-scroll{max-height:104px;overflow-y:auto;}
+  .cat-budget-list{display:flex;flex-direction:column;gap:12px;padding:10px 2px 4px;}
   .cat-budget-row{display:flex;flex-direction:column;gap:5px;}
   .cat-budget-top{display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:700;color:var(--ink-soft);}
   .cat-budget-bar-bg{height:9px;border-radius:5px;background:var(--bg);overflow:hidden;}
@@ -279,8 +280,9 @@
   .chart-bar-item{display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:36px;}
   .chart-bar-val{font-size:8px;font-weight:700;margin-bottom:5px;white-space:nowrap;color:var(--ink-soft);}
   .chart-bar{width:22px;background:var(--ink);border-radius:6px 6px 3px 3px;}
-  .chart-bar-track{width:22px;border-radius:6px 6px 3px 3px;background:var(--red-bg);position:relative;overflow:visible;display:flex;align-items:flex-end;}
+  .chart-bar-track{width:22px;border-radius:6px 6px 3px 3px;background:var(--bg);position:relative;overflow:visible;display:flex;align-items:flex-end;}
   .chart-bar-fill-inner{width:100%;background:var(--red);border-radius:6px 6px 3px 3px;}
+  .chart-bar-budget-line{position:absolute;top:0;left:-2px;right:-2px;height:2px;background:var(--ink);z-index:2;}
   .chart-bar-in{background:var(--green-bg);border:1.5px solid var(--green);}
   .chart-bar-out{background:var(--red-bg);border:1.5px solid var(--red);}
   .chart-bar-lbl{
@@ -1552,10 +1554,10 @@
             const refAmt = hasBudget ? budget : spent;
             const trackH = Math.max(10, (refAmt/maxRef)*70);
             const fillH = hasBudget ? (budget>0 ? trackH*(spent/budget) : 0) : trackH;
-            const valLabel = hasBudget ? `${fmtWhole(spent)}/${fmtWhole(budget)}€` : `${fmtWhole(spent)}€`;
             return `<div class="chart-bar-item">
-              <div class="chart-bar-val mono">${valLabel}</div>
+              <div class="chart-bar-val mono">${fmtWhole(spent)}€</div>
               <div class="chart-bar-track" style="height:${trackH}px;">
+                ${hasBudget ? `<div class="chart-bar-budget-line"></div>` : ''}
                 <div class="chart-bar-fill-inner" style="height:${Math.max(3,fillH)}px;"></div>
               </div>
               <div class="chart-bar-lbl">${cat}</div>
@@ -1563,18 +1565,19 @@
           }).join('')}
         </div>
       </div>` : `
-      <div class="cat-budget-list">
-        ${displayCats.map(cat=>{
-          const budget = parseFloat(catBudgets[cat])||0;
-          const spent = txFiscal.filter(t=>t.type==='Gasto' && t.category===cat).reduce((s,t)=>s+t.amount,0);
-          const hasBudget = budget>0;
-          const pct = hasBudget ? (spent/budget)*100 : 100;
-          const valLabel = hasBudget ? `${fmtWhole(spent)}€ / ${fmtWhole(budget)}€` : `${fmtWhole(spent)}€`;
-          return `<div class="cat-budget-row">
-            <div class="cat-budget-top"><span>${cat}</span><span class="mono">${valLabel}</span></div>
-            <div class="cat-budget-bar-bg"><div class="cat-budget-bar-fill" style="width:${Math.min(100,Math.max(3,pct))}%;"></div></div>
-          </div>`;
-        }).join('')}
+      <div class="cat-budget-list-scroll">
+        <div class="cat-budget-list">
+          ${displayCats.map(cat=>{
+            const budget = parseFloat(catBudgets[cat])||0;
+            const spent = txFiscal.filter(t=>t.type==='Gasto' && t.category===cat).reduce((s,t)=>s+t.amount,0);
+            const hasBudget = budget>0;
+            const pct = hasBudget ? (spent/budget)*100 : 100;
+            return `<div class="cat-budget-row">
+              <div class="cat-budget-top"><span>${cat}</span><span class="mono">${fmtWhole(spent)}€</span></div>
+              <div class="cat-budget-bar-bg"><div class="cat-budget-bar-fill" style="width:${Math.min(100,Math.max(2,pct))}%;"></div></div>
+            </div>`;
+          }).join('')}
+        </div>
       </div>`) : `<div class="empty-note">Sin gastos.</div>`}
     </div>`;
     html += `</div>`;
