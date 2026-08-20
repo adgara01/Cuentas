@@ -62,10 +62,14 @@
   .cat-budget-bars{display:flex;align-items:flex-end;gap:16px;padding:16px 4px 0;min-width:min-content;}
   .cat-budget-list-scroll{max-height:104px;overflow-y:auto;}
   .cat-budget-list{display:flex;flex-direction:column;gap:12px;padding:10px 2px 4px;}
-  .cat-budget-row{display:flex;flex-direction:column;gap:5px;}
-  .cat-budget-top{display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:700;color:var(--ink-soft);}
-  .cat-budget-bar-bg{height:9px;border-radius:5px;background:var(--bg);overflow:hidden;}
-  .cat-budget-bar-fill{height:100%;border-radius:5px;background:var(--red);}
+  .cat-budget-row{display:flex;align-items:center;gap:8px;padding:5px 0;}
+  .cat-budget-lbl-h{width:56px;flex-shrink:0;font-size:10px;font-weight:700;color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .cat-budget-track-wrap{flex:1;min-width:0;}
+  .cat-budget-track-h{height:9px;border-radius:5px;background:var(--bg);position:relative;overflow:visible;}
+  .cat-budget-track-h.has-border{border:1.5px solid var(--ink-soft);background:transparent;}
+  .cat-budget-fill-h{position:absolute;left:0;top:0;bottom:0;background:var(--red);border-radius:4px;}
+  .cat-budget-nums-h{flex-shrink:0;font-size:9.5px;font-weight:700;color:var(--ink-soft);white-space:nowrap;}
+  .cat-budget-nums-budget{color:var(--muted);font-weight:600;}
   .cat-budget-col{display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:40px;}
   .cat-budget-val{font-size:8px;font-weight:700;margin-bottom:0;white-space:nowrap;color:var(--ink-soft);}
   .cat-budget-budget{font-size:7px;font-weight:600;margin-bottom:5px;white-space:nowrap;color:var(--muted);}
@@ -281,8 +285,9 @@
   .chart-bar-val{font-size:8px;font-weight:700;margin-bottom:5px;white-space:nowrap;color:var(--ink-soft);}
   .chart-bar{width:22px;background:var(--ink);border-radius:6px 6px 3px 3px;}
   .chart-bar-track{width:22px;border-radius:6px 6px 3px 3px;background:var(--bg);position:relative;overflow:visible;display:flex;align-items:flex-end;}
-  .chart-bar-fill-inner{width:100%;background:var(--red);border-radius:6px 6px 3px 3px;}
-  .chart-bar-budget-line{position:absolute;top:0;left:-2px;right:-2px;height:2px;background:var(--ink);z-index:2;}
+  .chart-bar-track.has-border{border:1.5px solid var(--ink-soft);background:transparent;}
+  .chart-bar-fill-inner{width:100%;background:var(--red);border-radius:5px 5px 3px 3px;}
+  .chart-bar-budget-lbl{font-size:7px;font-weight:700;color:var(--muted);margin-bottom:2px;white-space:nowrap;}
   .chart-bar-in{background:var(--green-bg);border:1.5px solid var(--green);}
   .chart-bar-out{background:var(--red-bg);border:1.5px solid var(--red);}
   .chart-bar-lbl{
@@ -1555,9 +1560,9 @@
             const trackH = Math.max(10, (refAmt/maxRef)*70);
             const fillH = hasBudget ? (budget>0 ? trackH*(spent/budget) : 0) : trackH;
             return `<div class="chart-bar-item">
+              ${hasBudget ? `<div class="chart-bar-budget-lbl mono">${fmtWhole(budget)}€</div>` : ''}
               <div class="chart-bar-val mono">${fmtWhole(spent)}€</div>
-              <div class="chart-bar-track" style="height:${trackH}px;">
-                ${hasBudget ? `<div class="chart-bar-budget-line"></div>` : ''}
+              <div class="chart-bar-track ${hasBudget?'has-border':''}" style="height:${trackH}px;">
                 <div class="chart-bar-fill-inner" style="height:${Math.max(3,fillH)}px;"></div>
               </div>
               <div class="chart-bar-lbl">${cat}</div>
@@ -1571,10 +1576,17 @@
             const budget = parseFloat(catBudgets[cat])||0;
             const spent = txFiscal.filter(t=>t.type==='Gasto' && t.category===cat).reduce((s,t)=>s+t.amount,0);
             const hasBudget = budget>0;
-            const pct = hasBudget ? (spent/budget)*100 : 100;
+            const refAmt = hasBudget ? budget : spent;
+            const trackW = Math.max(14, (refAmt/maxRef)*100);
+            const fillPct = hasBudget ? (budget>0 ? (spent/budget)*100 : 0) : 100;
             return `<div class="cat-budget-row">
-              <div class="cat-budget-top"><span>${cat}</span><span class="mono">${fmtWhole(spent)}€</span></div>
-              <div class="cat-budget-bar-bg"><div class="cat-budget-bar-fill" style="width:${Math.min(100,Math.max(2,pct))}%;"></div></div>
+              <div class="cat-budget-lbl-h">${cat}</div>
+              <div class="cat-budget-track-wrap">
+                <div class="cat-budget-track-h ${hasBudget?'has-border':''}" style="width:${trackW}%;">
+                  <div class="cat-budget-fill-h" style="width:${Math.max(4,fillPct)}%;"></div>
+                </div>
+              </div>
+              <div class="cat-budget-nums-h mono">${fmtWhole(spent)}€${hasBudget?`<span class="cat-budget-nums-budget">/${fmtWhole(budget)}€</span>`:''}</div>
             </div>`;
           }).join('')}
         </div>
