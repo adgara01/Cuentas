@@ -64,7 +64,7 @@
   .cat-budget-row{display:flex;flex-direction:column;gap:5px;}
   .cat-budget-top{display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:700;color:var(--ink-soft);}
   .cat-budget-bar-bg{height:9px;border-radius:5px;background:var(--bg);overflow:hidden;}
-  .cat-budget-bar-fill{height:100%;border-radius:5px;}
+  .cat-budget-bar-fill{height:100%;border-radius:5px;background:var(--red);}
   .cat-budget-col{display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:40px;}
   .cat-budget-val{font-size:8px;font-weight:700;margin-bottom:0;white-space:nowrap;color:var(--ink-soft);}
   .cat-budget-budget{font-size:7px;font-weight:600;margin-bottom:5px;white-space:nowrap;color:var(--muted);}
@@ -272,13 +272,15 @@
   .chart-wrap svg,.chart-wrap svg *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
   .chart-wrap svg text{pointer-events:none;}
   .chart-title{font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--muted);font-weight:700;margin-bottom:2px;padding:0 4px;}
-  .chart-title-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;}
-  .gasto-view-toggle{font-size:9.5px;font-weight:700;color:var(--green);cursor:pointer;padding:2px 4px;white-space:nowrap;}
+  .chart-title-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;height:15px;}
+  .gasto-view-toggle{color:var(--green);cursor:pointer;padding:2px 4px;display:flex;align-items:center;}
   .chart-subtitle{font-size:10.5px;color:var(--muted);font-weight:500;margin-bottom:12px;padding:0 4px;text-transform:none;letter-spacing:0;}
   .chart-bars{display:flex;align-items:flex-end;gap:7px;min-height:70px;padding:8px 2px 0;}
   .chart-bar-item{display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:36px;}
   .chart-bar-val{font-size:8px;font-weight:700;margin-bottom:5px;white-space:nowrap;color:var(--ink-soft);}
   .chart-bar{width:22px;background:var(--ink);border-radius:6px 6px 3px 3px;}
+  .chart-bar-track{width:22px;border-radius:6px 6px 3px 3px;background:var(--red-bg);position:relative;overflow:visible;display:flex;align-items:flex-end;}
+  .chart-bar-fill-inner{width:100%;background:var(--red);border-radius:6px 6px 3px 3px;}
   .chart-bar-in{background:var(--green-bg);border:1.5px solid var(--green);}
   .chart-bar-out{background:var(--red-bg);border:1.5px solid var(--red);}
   .chart-bar-lbl{
@@ -509,6 +511,12 @@
 
   const fmt = n => (Math.round((n+Number.EPSILON)*100)/100).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2});
   const fmtWhole = n => Math.round(n).toLocaleString('es-ES',{maximumFractionDigits:0});
+  function svgChartIconBars(){
+    return `<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1" y="8" width="3" height="6" rx="1" fill="currentColor"/><rect x="6" y="4" width="3" height="10" rx="1" fill="currentColor"/><rect x="11" y="1" width="3" height="13" rx="1" fill="currentColor"/></svg>`;
+  }
+  function svgChartIconBattery(){
+    return `<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1" y="2.5" width="13" height="3.5" rx="1.5" fill="currentColor" opacity="0.35"/><rect x="1" y="2.5" width="8" height="3.5" rx="1.5" fill="currentColor"/><rect x="1" y="8.5" width="13" height="3.5" rx="1.5" fill="currentColor" opacity="0.35"/><rect x="1" y="8.5" width="5" height="3.5" rx="1.5" fill="currentColor"/></svg>`;
+  }
   const euro = n => (n<0?'−':'') + fmt(Math.abs(n)) + '€';
   const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,7);
   const accName = id => { const a = state.accounts.find(x=>x.id===id); return a ? a.name : id; };
@@ -1503,7 +1511,7 @@
     const ingEntries = Object.entries(byCatIng).sort((a,b)=>b[1]-a[1]).slice(0,10);
     const maxIng = Math.max(...ingEntries.map(e=>e[1]),1);
     html += `<div class="chart-wrap" style="min-height:170px;">
-      <div class="chart-title">Ingresos</div>
+      <div class="chart-title-row"><div class="chart-title" style="margin:0;padding:0;">Ingresos</div></div>
       <div class="chart-bars">
         ${ingEntries.length ? ingEntries.map(([cat,amt])=>`
           <div class="chart-bar-item">
@@ -1516,60 +1524,58 @@
 
     const byCatGas = {};
     tx.filter(t=>t.type==='Gasto').forEach(t=>{ byCatGas[t.category] = (byCatGas[t.category]||0)+t.amount; });
-    const gasEntries = Object.entries(byCatGas).sort((a,b)=>b[1]-a[1]).slice(0,10);
-    const maxGas = Math.max(...gasEntries.map(e=>e[1]),1);
     const catBudgets = (state.monthlyPlans[planKey] && state.monthlyPlans[planKey].catBudget) || {};
-    const budgetedCats = state.categories
-      .filter(c=> (parseFloat(catBudgets[c])||0) > 0)
-      .sort((a,b)=> (parseFloat(catBudgets[b])||0) - (parseFloat(catBudgets[a])||0));
-    const maxBudget = Math.max(...budgetedCats.map(c=>parseFloat(catBudgets[c])||0),1);
+    const budgetedCats = state.categories.filter(c=> (parseFloat(catBudgets[c])||0) > 0);
+    const spentCatsOnly = Object.keys(byCatGas).filter(c=>!budgetedCats.includes(c));
+    const displayCats = [
+      ...budgetedCats.sort((a,b)=> (parseFloat(catBudgets[b])||0) - (parseFloat(catBudgets[a])||0)),
+      ...spentCatsOnly.sort((a,b)=> (byCatGas[b]||0) - (byCatGas[a]||0))
+    ].slice(0,15);
+    const refAmounts = displayCats.map(c=>{
+      const budget = parseFloat(catBudgets[c])||0;
+      const spent = txFiscal.filter(t=>t.type==='Gasto' && t.category===c).reduce((s,t)=>s+t.amount,0);
+      return budget>0 ? budget : spent;
+    });
+    const maxRef = Math.max(...refAmounts, 1);
     html += `<div class="chart-wrap" style="min-height:170px;">
       <div class="chart-title-row">
         <div class="chart-title" style="margin:0;padding:0;">Gastos</div>
-        ${budgetedCats.length ? `<span class="gasto-view-toggle" id="gastoViewToggle">${gastoChartMode==='bars'?'Ver batería':'Ver barras'}</span>` : ''}
+        ${displayCats.length ? `<span class="gasto-view-toggle" id="gastoViewToggle" title="Cambiar vista">${gastoChartMode==='bars' ? svgChartIconBars() : svgChartIconBattery()}</span>` : ''}
       </div>
-      ${budgetedCats.length ? (gastoChartMode==='bars' ? `
+      ${displayCats.length ? (gastoChartMode==='bars' ? `
       <div style="overflow-x:auto;">
-        <div class="cat-budget-bars">
-          ${budgetedCats.map(cat=>{
+        <div class="chart-bars" style="padding-left:2px;">
+          ${displayCats.map(cat=>{
             const budget = parseFloat(catBudgets[cat])||0;
             const spent = txFiscal.filter(t=>t.type==='Gasto' && t.category===cat).reduce((s,t)=>s+t.amount,0);
-            const trackH = Math.max(10, (budget/maxBudget)*70);
-            const pct = budget>0 ? Math.min(100,(spent/budget)*100) : (spent>0?100:0);
-            const over = spent>budget;
-            const color = over ? 'var(--red)' : (pct>85 ? 'var(--amber)' : 'var(--red)');
-            return `<div class="cat-budget-col">
-              <div class="cat-budget-val mono">${fmtWhole(spent)}€</div>
-              <div class="cat-budget-budget mono">/${fmtWhole(budget)}€</div>
-              <div class="cat-budget-track" style="height:${trackH}px;">
-                <div class="cat-budget-fill" style="height:${Math.max(3,pct)}%;background:${color};"></div>
+            const hasBudget = budget>0;
+            const refAmt = hasBudget ? budget : spent;
+            const trackH = Math.max(10, (refAmt/maxRef)*70);
+            const fillH = hasBudget ? (budget>0 ? trackH*(spent/budget) : 0) : trackH;
+            const valLabel = hasBudget ? `${fmtWhole(spent)}/${fmtWhole(budget)}€` : `${fmtWhole(spent)}€`;
+            return `<div class="chart-bar-item">
+              <div class="chart-bar-val mono">${valLabel}</div>
+              <div class="chart-bar-track" style="height:${trackH}px;">
+                <div class="chart-bar-fill-inner" style="height:${Math.max(3,fillH)}px;"></div>
               </div>
-              <div class="cat-budget-lbl">${cat}</div>
+              <div class="chart-bar-lbl">${cat}</div>
             </div>`;
           }).join('')}
         </div>
       </div>` : `
       <div class="cat-budget-list">
-        ${budgetedCats.map(cat=>{
+        ${displayCats.map(cat=>{
           const budget = parseFloat(catBudgets[cat])||0;
           const spent = txFiscal.filter(t=>t.type==='Gasto' && t.category===cat).reduce((s,t)=>s+t.amount,0);
-          const pct = budget>0 ? Math.min(100,(spent/budget)*100) : (spent>0?100:0);
-          const over = spent>budget;
-          const color = over ? 'var(--red)' : (pct>85 ? 'var(--amber)' : 'var(--green)');
+          const hasBudget = budget>0;
+          const pct = hasBudget ? (spent/budget)*100 : 100;
+          const valLabel = hasBudget ? `${fmtWhole(spent)}€ / ${fmtWhole(budget)}€` : `${fmtWhole(spent)}€`;
           return `<div class="cat-budget-row">
-            <div class="cat-budget-top"><span>${cat}</span><span class="mono">${fmtWhole(spent)}€ / ${fmtWhole(budget)}€</span></div>
-            <div class="cat-budget-bar-bg"><div class="cat-budget-bar-fill" style="width:${Math.max(3,pct)}%;background:${color};"></div></div>
+            <div class="cat-budget-top"><span>${cat}</span><span class="mono">${valLabel}</span></div>
+            <div class="cat-budget-bar-bg"><div class="cat-budget-bar-fill" style="width:${Math.min(100,Math.max(3,pct))}%;"></div></div>
           </div>`;
         }).join('')}
-      </div>`) : `
-      <div class="chart-bars">
-        ${gasEntries.length ? gasEntries.map(([cat,amt])=>`
-          <div class="chart-bar-item">
-            <div class="chart-bar-val mono">${fmt(amt)}€</div>
-            <div class="chart-bar chart-bar-out" style="height:${Math.max(6,(amt/maxGas)*70)}px;"></div>
-            <div class="chart-bar-lbl">${cat}</div>
-          </div>`).join('') : `<div class="empty-note">Sin gastos.</div>`}
-      </div>`}
+      </div>`) : `<div class="empty-note">Sin gastos.</div>`}
     </div>`;
     html += `</div>`;
 
