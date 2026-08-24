@@ -1533,7 +1533,10 @@
 
     const byCatGas = {};
     tx.filter(t=>t.type==='Gasto').forEach(t=>{ byCatGas[t.category] = (byCatGas[t.category]||0)+t.amount; });
-    const catBudgets = (state.monthlyPlans[planKey] && state.monthlyPlans[planKey].catBudget) || {};
+    // el presupuesto por categoría sigue el periodo de nómina que tengas filtrado (si hay uno concreto elegido);
+    // si no, se queda en el mes actual, igual que antes.
+    const gastoPlanKey = (dashFilters.dateMode==='nomina' && dashFilters.nominaLabelMonth) ? dashFilters.nominaLabelMonth : planKey;
+    const catBudgets = (state.monthlyPlans[gastoPlanKey] && state.monthlyPlans[gastoPlanKey].catBudget) || {};
     const budgetedCats = state.categories.filter(c=> (parseFloat(catBudgets[c])||0) > 0);
     const spentCatsOnly = Object.keys(byCatGas).filter(c=>!budgetedCats.includes(c));
     const displayCats = [
@@ -1542,7 +1545,7 @@
     ].slice(0,15);
     const refAmounts = displayCats.map(c=>{
       const budget = parseFloat(catBudgets[c])||0;
-      const spent = txFiscal.filter(t=>t.type==='Gasto' && t.category===c).reduce((s,t)=>s+t.amount,0);
+      const spent = tx.filter(t=>t.type==='Gasto' && t.category===c).reduce((s,t)=>s+t.amount,0);
       return Math.max(budget, spent);
     });
     const maxRef = Math.max(...refAmounts, 1);
@@ -1552,11 +1555,11 @@
         ${displayCats.length ? `<span class="gasto-view-toggle" id="gastoViewToggle" title="Cambiar vista">${gastoChartMode==='bars' ? svgChartIconBars() : svgChartIconBattery()}</span>` : ''}
       </div>
       ${displayCats.length ? (gastoChartMode==='bars' ? `
-      <div style="overflow-x:auto;">
+      <div style="overflow-x:auto;padding-bottom:12px;">
         <div class="chart-bars" style="padding-left:2px;">
           ${displayCats.map(cat=>{
             const budget = parseFloat(catBudgets[cat])||0;
-            const spent = txFiscal.filter(t=>t.type==='Gasto' && t.category===cat).reduce((s,t)=>s+t.amount,0);
+            const spent = tx.filter(t=>t.type==='Gasto' && t.category===cat).reduce((s,t)=>s+t.amount,0);
             const hasBudget = budget>0;
             const refAmt = hasBudget ? budget : spent;
             const trackH = Math.max(10, (refAmt/maxRef)*70);
@@ -1580,7 +1583,7 @@
         <div class="cat-budget-list">
           ${displayCats.map(cat=>{
             const budget = parseFloat(catBudgets[cat])||0;
-            const spent = txFiscal.filter(t=>t.type==='Gasto' && t.category===cat).reduce((s,t)=>s+t.amount,0);
+            const spent = tx.filter(t=>t.type==='Gasto' && t.category===cat).reduce((s,t)=>s+t.amount,0);
             const hasBudget = budget>0;
             const refAmt = hasBudget ? budget : spent;
             const trackW = Math.max(4, (refAmt/maxRef)*100);
