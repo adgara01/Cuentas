@@ -1439,11 +1439,15 @@
       </div>
     </div>`;
 
-    // ---- gráfico de días: SIEMPRE el mes fiscal (nómina) en curso, todos los días, sin agrupar ni hacer scroll ----
-    const curDays = daysBetween(curPeriod.start, curPeriod.end) + 1;
+    // ---- gráfico de días: sigue el periodo de nómina filtrado si has elegido uno concreto; si no, el actual ----
+    const dayChartPeriod = (dashFilters.dateMode==='nomina' && dashFilters.nominaLabelMonth)
+      ? nominaPeriodForLabelMonth(dashFilters.nominaLabelMonth, state.paydayDay||1)
+      : curPeriod;
+    const dayChartLabelMonth = (dashFilters.dateMode==='nomina' && dashFilters.nominaLabelMonth) ? dashFilters.nominaLabelMonth : nominaCurrentLabelMonth();
+    const curDays = daysBetween(dayChartPeriod.start, dayChartPeriod.end) + 1;
     const fiscalDayData = [];
     for(let i=0;i<curDays;i++){
-      const d = addDays(curPeriod.start, i);
+      const d = addDays(dayChartPeriod.start, i);
       const dayTx = state.transactions.filter(t=>t.date===d);
       const gastoNormal = dayTx.filter(t=>t.type==='Gasto' && !t.extraordinary).reduce((s,t)=>s+t.amount,0);
       const gastoExtra = dayTx.filter(t=>t.type==='Gasto' && t.extraordinary).reduce((s,t)=>s+t.amount,0);
@@ -1470,7 +1474,7 @@
     });
     lastFiscalChart = hasFiscalData ? { days: fiscalDayData } : null;
     html += `<div class="chart-wrap">
-      <div class="chart-title">Gasto diario — ${monthLabel(nominaCurrentLabelMonth())} <span style="font-weight:400;text-transform:none;letter-spacing:0;">(toca un día para filtrar, arrastra para ver el importe)</span></div>
+      <div class="chart-title">Gasto diario — ${monthLabel(dayChartLabelMonth)} <span style="font-weight:400;text-transform:none;letter-spacing:0;">(toca un día para filtrar, arrastra para ver el importe)</span></div>
       ${hasFiscalData ? `
       <div class="day-chart-row">
         <div class="day-chart-axis">
