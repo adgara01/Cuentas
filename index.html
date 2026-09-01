@@ -9,8 +9,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#F3F4F6">
 <link rel="manifest" href="manifest.json">
-<link rel="icon" type="image/png" href="favicon-32.png">
-<link rel="apple-touch-icon" href="favicon-180.png">
+<link rel="apple-touch-icon" href="icon-180.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -1328,7 +1327,16 @@
         const el = document.getElementById(elId);
         if(!el) return;
         el.onchange = (e)=>{
-          if(isTo) toAccount = e.target.value; else account = e.target.value;
+          if(isTo){
+            toAccount = e.target.value;
+          } else {
+            account = e.target.value;
+            if(toAccount===account){
+              const alt = transactableAccounts().find(a=>a.id!==account);
+              if(alt) toAccount = alt.id;
+            }
+            draw();
+          }
         };
       }
       bindAccountSelect('tx-account', false);
@@ -2611,6 +2619,19 @@
         chip.classList.add('active');
       };
     });
+
+    const editAccEl = $sheet.querySelector('#edit-tx-account');
+    if(editAccEl && type==='Movimiento'){
+      editAccEl.onchange = (e)=>{
+        account = e.target.value;
+        if(toAccount===account){
+          const alt = transactable.find(a=>a.id!==account);
+          if(alt) toAccount = alt.id;
+        }
+        const toEl = $sheet.querySelector('#edit-tx-toaccount');
+        if(toEl) toEl.innerHTML = accountOptionsHtml(toAccount, account);
+      };
+    }
 
     $sheet.querySelector('#editTxSave').onclick = async ()=>{
       const amount = parseFloat($sheet.querySelector('#edit-tx-amount').value);
