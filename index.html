@@ -566,6 +566,15 @@
         }
         // limpia referencias a categorías que ya no existen (p.ej. quedaron colgadas de un renombrado anterior)
         state.expenseGroups.forEach(g=>{ g.categories = g.categories.filter(c=>state.categories.includes(c)); });
+        Object.values(state.monthlyPlans).forEach(p=>{
+          if(p.catBudget){
+            Object.keys(p.catBudget).forEach(c=>{ if(!state.categories.includes(c)) delete p.catBudget[c]; });
+          }
+        });
+        if(state.filterPreset && Array.isArray(state.filterPreset.categories)){
+          const allCatNames = [...state.categories, ...state.incomeCategories];
+          state.filterPreset.categories = state.filterPreset.categories.filter(c=>allCatNames.includes(c));
+        }
         state.accounts.forEach(a=>{ if(a.manualBalance===undefined) a.manualBalance = 0; if(a.manual===undefined) a.manual=false; });
       }
     }catch(e){ /* first run */ }
@@ -2451,6 +2460,12 @@
           state.transactions.forEach(t=>{ if(t.category===name) t.category = trimmed; });
           if(listName==='categories'){
             state.expenseGroups.forEach(g=>{ g.categories = g.categories.map(c=>c===name?trimmed:c); });
+            Object.values(state.monthlyPlans).forEach(p=>{
+              if(p.catBudget && p.catBudget[name]!==undefined){
+                p.catBudget[trimmed] = p.catBudget[name];
+                delete p.catBudget[name];
+              }
+            });
           }
           saveState();
           showToast('Categoría renombrada');
@@ -2465,6 +2480,7 @@
           list.splice(idx,1);
           if(listName==='categories'){
             state.expenseGroups.forEach(g=>{ g.categories = g.categories.filter(c=>c!==name); });
+            Object.values(state.monthlyPlans).forEach(p=>{ if(p.catBudget) delete p.catBudget[name]; });
           }
           saveState();
           $overlay.classList.remove('show');
