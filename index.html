@@ -564,6 +564,8 @@
             ? { types: state.filterPresets[0].types||[], accounts: state.filterPresets[0].accounts||[], categories: state.filterPresets[0].categories||[] }
             : { types:[], accounts:[], categories:[] };
         }
+        // limpia referencias a categorías que ya no existen (p.ej. quedaron colgadas de un renombrado anterior)
+        state.expenseGroups.forEach(g=>{ g.categories = g.categories.filter(c=>state.categories.includes(c)); });
         state.accounts.forEach(a=>{ if(a.manualBalance===undefined) a.manualBalance = 0; if(a.manual===undefined) a.manual=false; });
       }
     }catch(e){ /* first run */ }
