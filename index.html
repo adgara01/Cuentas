@@ -1630,6 +1630,12 @@
     </div>`;
     html += `</div>`;
 
+    // ---- totales filtrados ----
+    html += `<div class="cell"><div class="filtered-totals">
+      <div class="ft-box in"><div class="ft-lbl">Ingresos</div><div class="ft-val">${fmt(ingT)}€</div></div>
+      <div class="ft-box out"><div class="ft-lbl">Gastos</div><div class="ft-val">${fmt(gasT)}€</div></div>
+    </div></div>`;
+
     // ---- filtros colapsables ----
     const filterSummary = activeFilterSummary();
     html += `<div class="cell">
@@ -1679,12 +1685,6 @@
         ${dashFilters.dateMode==='todo' ? `<div class="range-readout">${range.label}: ${range.start} → ${range.end}</div>` : ''}
       </div>
     </div>`;
-
-    // ---- totales filtrados ----
-    html += `<div class="cell"><div class="filtered-totals">
-      <div class="ft-box in"><div class="ft-lbl">Ingresos</div><div class="ft-val">${fmt(ingT)}€</div></div>
-      <div class="ft-box out"><div class="ft-lbl">Gastos</div><div class="ft-val">${fmt(gasT)}€</div></div>
-    </div></div>`;
 
     // ---- lista filtrada ----
     tx.sort((a,b)=> b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
