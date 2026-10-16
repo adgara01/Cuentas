@@ -256,6 +256,54 @@
     display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 6px 16px rgba(20,20,25,0.22);padding:0 0 3px;}
   .fab-add.active{background:var(--ink);}
   .fab-add:active{transform:translateX(-50%) scale(.94);}
+  /* ================= VERSIÓN ORDENADOR (solo ≥1000px; el móvil no cambia) ================= */
+  @media (min-width:1000px){
+    .tabbar{overflow-y:auto;}
+    .side-create{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin:0 0 14px;padding:13px 34px 13px 30px;white-space:nowrap;border:none;border-radius:14px;
+      background:var(--green);color:#fff;font-size:14px;font-weight:800;cursor:pointer;position:relative;box-shadow:0 4px 12px rgba(23,166,114,.28);}
+    .side-create.active{box-shadow:0 0 0 3px var(--green-bg),0 4px 12px rgba(23,166,114,.28);}
+    .side-create b{font-size:20px;line-height:1;font-weight:500;}
+    .side-sep{font-size:10.5px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);padding:12px 14px 4px;}
+    .tabbar .tab-btn{position:relative;padding-left:36px;padding-right:36px;font-size:15px;}
+    .tabbar .tab-btn.active{box-shadow:inset 3px 0 0 var(--green);}
+    .tabbar .tab-btn{font-size:15px;}
+    kbd.kk{font-family:inherit;font-size:10.5px;font-weight:800;line-height:1;padding:3px 6px;border-radius:6px;background:var(--bg);color:var(--muted);border:1px solid var(--line);}
+    .tabbar .tab-btn kbd.kk{position:absolute;right:10px;top:50%;transform:translateY(-50%);}
+    .side-create kbd.kk{position:absolute;right:10px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.22);border-color:transparent;color:#fff;}
+    .side-keys{display:block;margin:0 0 6px;padding:8px 10px;border:none;background:transparent;color:var(--muted);font-size:12px;font-weight:700;cursor:pointer;text-align:left;border-radius:10px;font-family:inherit;}
+    .side-keys:hover{background:var(--bg);color:var(--ink);}
+    header.top{padding-bottom:18px;}
+    header.top h1{font-size:26px;}
+    header.top .fecha{font-size:13px;}
+    header.top .fecha::first-letter{text-transform:uppercase;}
+    /* ventanas emergentes: tarjeta centrada en vez de hoja desde abajo */
+    body .overlay{align-items:center;}
+    .overlay .sheet{max-width:560px;border-radius:22px;padding:24px 26px 26px;max-height:86vh;box-shadow:0 24px 70px rgba(20,20,25,.30);animation:cardIn .18s ease;}
+    @keyframes cardIn{from{transform:scale(.97) translateY(8px);opacity:0;}to{transform:none;opacity:1;}}
+    .toast{left:calc(50% + 115px);}
+    .dash-list-wrap{column-count:2;column-gap:22px;}
+    .dash-list-wrap .day-group{break-inside:avoid;}
+    .dash-list-wrap .empty-note{column-span:all;}
+    .kbd-table{width:100%;border-collapse:collapse;font-size:14px;}
+    .kbd-table td{padding:8px 4px;border-top:1px solid var(--line);}
+    .kbd-table tr:first-child td{border-top:none;}
+    .kbd-table td:first-child{width:92px;}
+  }
+  @media (min-width:1000px) and (hover:hover) and (pointer:fine){
+    .tabbar .tab-btn:hover{background:var(--bg);}
+    .tabbar .tab-btn.active:hover{background:var(--green-bg);}
+    .side-create:hover{filter:brightness(1.06);}
+    .hist-row,.mv-line,.acc-cell,.chip,.fchip,.btn-ghost,.btn-secondary,.movs-table tbody tr{cursor:pointer;transition:background .12s,box-shadow .12s,filter .12s;}
+    .hist-row:hover,.mv-line:hover{background:var(--bg);}
+    .acc-cell:hover{box-shadow:0 2px 10px rgba(20,20,25,.10);}
+    .chip:hover:not(.active),.fchip:hover:not(.active){background:var(--line);}
+    .btn-ghost:hover{background:var(--bg);}
+    .btn-primary:hover{filter:brightness(1.06);}
+    .movs-table tbody tr:hover td{background:var(--bg);}
+    :focus-visible{outline:2px solid var(--green);outline-offset:2px;border-radius:8px;}
+    html{scrollbar-width:thin;scrollbar-color:var(--line) transparent;}
+    ::-webkit-scrollbar{width:10px;height:10px;} ::-webkit-scrollbar-thumb{background:var(--line);border-radius:8px;border:2px solid transparent;background-clip:padding-box;}
+  }
   /* ---------- tabs ---------- */
   .tabbar{
     position:fixed;bottom:0;left:0;right:0;background:var(--cell);border-top:none;
@@ -661,7 +709,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
-  const APP_VERSION = '2026.10.16-14';
+  const APP_VERSION = '2026.10.16-15';
   const DEFAULT_STATE = {
     onboarded: false,
     accounts: [
@@ -1156,20 +1204,24 @@
   // ================= TABS =================
   function renderTabbar(){
     $tabbar.innerHTML = '';
-    $tabbarWrap.querySelectorAll('.side-brand,.side-foot,.fab-add').forEach(e=>e.remove());
+    $tabbarWrap.querySelectorAll('.side-brand,.side-foot,.fab-add,.side-create').forEach(e=>e.remove());
     const desktop = window.innerWidth>=1000;
     let tabs;
-    if(desktop) tabs = [['resumen','Resumen'],['insertar','Insertar movimiento'],['dashboard','Dashboard'],['anual','Año'],['movs','Movimientos'],['ajustes','Objetivos y ajustes']];
+    if(desktop) tabs = [['resumen','Resumen'],['dashboard','Dashboard'],['anual','Año'],['movs','Movimientos'],['ajustes','Objetivos y ajustes']];
     else tabs = [['resumen','Resumen'],['dashboard','Dashboard'],['anual','Año'],['ajustes','Objetivos y<br>ajustes']];
     if(desktop){
       const brand = document.createElement('div'); brand.className = 'side-brand';
       brand.innerHTML = `<img src="${LOGO_URL()}" alt=""><b>Cuentas</b>`;
       $tabbar.parentNode.insertBefore(brand, $tabbar);
+      const cr = document.createElement('button'); cr.className = 'side-create tab-create' + (activeTab==='insertar'?' active':'');
+      cr.innerHTML = '<b>+</b> Nuevo movimiento<kbd class="kk">N</kbd>';
+      cr.onclick = ()=>{ activeTab='insertar'; render(); };
+      $tabbar.parentNode.insertBefore(cr, $tabbar);
     }
-    tabs.forEach(([key,label])=>{
+    tabs.forEach(([key,label],ti)=>{
       const b = document.createElement('button');
       b.className = 'tab-btn' + (activeTab===key?' active':'');
-      b.innerHTML = desktop ? label.replace('<br>',' ') : label;
+      b.innerHTML = desktop ? label.replace('<br>',' ') + '<kbd class="kk">'+(ti+1)+'</kbd>' : label;
       b.onclick = ()=>{ activeTab=key; render(); };
       $tabbar.appendChild(b);
       if(!desktop && key==='dashboard'){ const sp=document.createElement('div'); sp.className='tab-spacer'; $tabbar.appendChild(sp); }
@@ -1181,12 +1233,17 @@
     }
     if(desktop){
       const foot = document.createElement('div'); foot.className = 'side-foot';
-      foot.innerHTML = (me ? '@'+me.username+'<br>' : '') + 'v'+APP_VERSION;
+      foot.innerHTML = '<button class="side-keys" id="sideKeys">⌨ Atajos de teclado <kbd class="kk">?</kbd></button>' + (me ? '@'+me.username+'<br>' : '') + 'v'+APP_VERSION;
       $tabbar.parentNode.appendChild(foot);
+      const sk = document.getElementById('sideKeys'); if(sk) sk.onclick = showShortcuts;
     }
   }
 
+  const DESK_TITLES = { resumen:'Resumen', insertar:'Nuevo movimiento', dashboard:'Dashboard', anual:'Año', movs:'Movimientos', ajustes:'Objetivos y ajustes' };
   function headerHtml(sub){
+    if(window.innerWidth>=1000){
+      return `<header class="top"><h1>${DESK_TITLES[activeTab]||'Cuentas'}</h1><div class="fecha">${new Date().toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'})}</div></header>`;
+    }
     return `<header class="top"><h1>Cuentas</h1><div class="fecha">${sub||new Date().toLocaleDateString('es-ES',{day:'2-digit',month:'short'})}</div></header>`;
   }
 
@@ -3839,6 +3896,31 @@
       await load(true); showToast('Clave nueva generada');
     };
   }
+
+  // ================= ATAJOS DE TECLADO (solo ordenador) =================
+  const SHORTCUT_TABS = ['resumen','dashboard','anual','movs','ajustes'];
+  function showShortcuts(){
+    const rows = [['1 – 5','Resumen, Dashboard, Año, Movimientos, Ajustes'],['N','Nuevo movimiento'],['/','Buscar en Movimientos'],['← →','Año anterior / siguiente (en Año)'],['Intro','Añadir movimiento (en el formulario)'],['Esc','Cerrar ventana'],['?','Esta ayuda']];
+    $sheet.innerHTML = `<h2>Atajos de teclado <span class="close-x" id="closeX">✕</span></h2>
+      <table class="kbd-table">${rows.map(r=>`<tr><td><kbd class="kk">${r[0]}</kbd></td><td>${r[1]}</td></tr>`).join('')}</table>`;
+    $overlay.classList.add('show');
+    document.getElementById('closeX').onclick = ()=> $overlay.classList.remove('show');
+  }
+  document.addEventListener('keydown', (e)=>{
+    if(window.innerWidth<1000 || !me || !state.onboarded) return;
+    if(document.getElementById('pinPad')) return;
+    if(e.key==='Escape'){ if($overlay.classList.contains('show')){ $overlay.classList.remove('show'); e.preventDefault(); } return; }
+    if(e.ctrlKey||e.metaKey||e.altKey) return;
+    const t = e.target, tag = t && t.tagName;
+    if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT'||(t&&t.isContentEditable)) return;
+    if($overlay.classList.contains('show')) return;
+    const k = e.key;
+    if(/^[1-5]$/.test(k)){ activeTab = SHORTCUT_TABS[parseInt(k,10)-1]; render(); e.preventDefault(); }
+    else if(k==='n'||k==='N'){ activeTab='insertar'; render(); e.preventDefault(); }
+    else if(k==='/'){ activeTab='movs'; render(); setTimeout(()=>{ const q=document.getElementById('mvQ'); if(q) q.focus(); },30); e.preventDefault(); }
+    else if(k==='?'){ showShortcuts(); e.preventDefault(); }
+    else if(activeTab==='anual' && (k==='ArrowLeft'||k==='ArrowRight')){ const b=document.getElementById(k==='ArrowLeft'?'anPrev':'anNext'); if(b && !b.disabled){ b.click(); e.preventDefault(); } }
+  }, true);
 
   // ================= ROOT RENDER =================
   function render(){
