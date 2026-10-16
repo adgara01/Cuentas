@@ -582,6 +582,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
+  const APP_VERSION = '2026.10.16-4';
   const DEFAULT_STATE = {
     onboarded: false,
     accounts: [
@@ -2167,7 +2168,8 @@
           <div class="exp-name">Correo</div>
           <div style="font-size:13px;font-weight:600;word-break:break-all;text-align:right;">${authEmail||'—'}</div>
         </div>
-        <div id="syncStatusText" style="font-size:12px;margin:8px 0 12px;">${syncStatusLabel()}</div>
+        <div id="syncStatusText" style="font-size:12px;margin:8px 0 4px;">${syncStatusLabel()}</div>
+        <div style="font-size:11.5px;color:var(--muted);margin:0 0 12px;">Versión ${APP_VERSION} · se actualiza sola</div>
         <button class="btn-ghost" id="syncNowBtn">Sincronizar ahora</button>
         <button class="btn-ghost" id="accMailBtn" style="margin-top:8px;">Cambiar correo</button>
         <button class="btn-ghost" id="accPwBtn" style="margin-top:8px;">Cambiar contraseña</button>
@@ -3510,7 +3512,36 @@
   window.addEventListener('focus', ()=>liveCheck(true));
   setInterval(()=>liveCheck(false), 5000);
 
+  // ---------- actualización automática ----------
+  // Al abrir la app y al volver a ella, mira en GitHub si hay una versión nueva. Si la hay, refresca la caché y se recarga sola.
+  let updBusy = false, lastUpdCheck = 0;
+  async function checkForUpdate(force){
+    if(updBusy || document.visibilityState!=='visible') return;
+    if(!force && Date.now()-lastUpdCheck < 60000) return;
+    updBusy = true; lastUpdCheck = Date.now();
+    try{
+      const base = location.origin + location.pathname;
+      const res = await fetch(base, { cache:'reload' });          // salta la caché y la deja renovada
+      if(!res.ok) return;
+      const txt = await res.text();
+      const m = txt.match(/const APP_VERSION = '([^']+)'/);
+      if(m && m[1] !== APP_VERSION){
+        let tries = 0; try{ tries = parseInt(sessionStorage.getItem('cuentas-upd-tries')||'0',10); }catch(e){}
+        if(tries >= 2) return;                                      // freno por si algo se atasca
+        if(userIsEditing()){ lastUpdCheck = 0; return; }           // no cortar lo que se está escribiendo; se reintenta enseguida
+        try{ sessionStorage.setItem('cuentas-upd-tries', String(tries+1)); }catch(e){}
+        showToast('Actualizando Cuentas…');
+        setTimeout(()=>location.reload(), 600);
+      } else { try{ sessionStorage.removeItem('cuentas-upd-tries'); }catch(e){} }
+    }catch(e){ /* sin conexión: se mira otra vez más tarde */ }
+    finally{ updBusy = false; }
+  }
+  document.addEventListener('visibilitychange', ()=>checkForUpdate(false));
+  window.addEventListener('pageshow', ()=>checkForUpdate(false));
+  setInterval(()=>checkForUpdate(false), 120000);
+
   (async function init(){
+    checkForUpdate(true);
     readLegacy();
     if(!initSb()){ renderLogin('login','No se ha podido cargar el sistema de cuentas. Comprueba la conexión y recarga la página.'); return; }
     let session = null;
