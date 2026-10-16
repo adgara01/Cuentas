@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Cuentas</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Cuentas">
@@ -209,6 +209,28 @@
     color:var(--ink);width:100%;padding:0;margin-top:8px;border-bottom:1.5px dashed var(--muted);
   }
 
+  /* ---------- sin zoom (como una app) ---------- */
+  html{touch-action:manipulation;-webkit-text-size-adjust:100%;}
+  @media (hover:none){
+    html body input:not(.mono-input):not([type=checkbox]):not([type=radio]):not([type=range]), html body select, html body textarea{font-size:16px;}
+  }
+  /* ---------- ordenador: menú lateral fijo a la izquierda ---------- */
+  .side-brand,.side-foot{display:none;}
+  @media (min-width:1000px){
+    body{padding-bottom:24px;padding-left:230px;}
+    .tabbar{top:0;bottom:0;left:0;right:auto;width:230px;border-radius:0;box-shadow:2px 0 18px rgba(20,20,25,0.06);
+      padding:22px 14px 16px;flex-direction:column;justify-content:flex-start;align-items:stretch;}
+    .tabbar-inner{flex-direction:column;gap:4px;max-width:none;}
+    .tab-btn{flex:none;text-align:left;padding:12px 14px;font-size:14px;border-radius:12px;}
+    .tab-btn:hover{background:var(--bg);} .tab-btn.active:hover{background:var(--green-bg);}
+    body.wide .tabbar-inner{max-width:none;}
+    .side-brand{display:flex;align-items:center;gap:10px;padding:2px 8px 18px;}
+    .side-brand img{width:38px;height:38px;border-radius:10px;}
+    .side-brand b{font-size:19px;font-weight:800;letter-spacing:-0.3px;}
+    .side-foot{display:block;margin-top:auto;padding:12px 10px 0;font-size:11.5px;color:var(--muted);line-height:1.5;word-break:break-all;}
+    .overlay{padding-left:230px;}
+    body.nosidebar{padding-left:0;} body.nosidebar .overlay{padding-left:0;}
+  }
   /* ---------- tabs ---------- */
   .tabbar{
     position:fixed;bottom:0;left:0;right:0;background:var(--cell);border-top:none;
@@ -582,7 +604,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
-  const APP_VERSION = '2026.10.16-4';
+  const APP_VERSION = '2026.10.16-5';
   const DEFAULT_STATE = {
     onboarded: false,
     accounts: [
@@ -1012,7 +1034,7 @@
 
   // ================= ONBOARDING =================
   function renderOnboarding(){
-    $tabbarWrap.style.display = 'none';
+    $tabbarWrap.style.display = 'none'; document.body.classList.add('nosidebar');
     function syncFieldsIntoState(){
       document.querySelectorAll('.ob-acc').forEach(row=>{
         const id = row.dataset.acc;
@@ -1077,16 +1099,28 @@
   // ================= TABS =================
   function renderTabbar(){
     $tabbar.innerHTML = '';
+    $tabbarWrap.querySelectorAll('.side-brand,.side-foot').forEach(e=>e.remove());
+    const desktop = window.innerWidth>=1000;
     const tabs = [['resumen','Resumen'],['insertar','Insertar<br>movimiento'],['dashboard','Dashboard'],['anual','Año']];
     if(window.innerWidth>=900) tabs.push(['movs','Movimientos']);
     tabs.push(['ajustes','Objetivos y<br>ajustes']);
+    if(desktop){
+      const brand = document.createElement('div'); brand.className = 'side-brand';
+      brand.innerHTML = `<img src="${LOGO_URL()}" alt=""><b>Cuentas</b>`;
+      $tabbar.parentNode.insertBefore(brand, $tabbar);
+    }
     tabs.forEach(([key,label])=>{
       const b = document.createElement('button');
       b.className = 'tab-btn' + (activeTab===key?' active':'');
-      b.innerHTML = label;
+      b.innerHTML = desktop ? label.replace('<br>',' ') : label;
       b.onclick = ()=>{ activeTab=key; render(); };
       $tabbar.appendChild(b);
     });
+    if(desktop){
+      const foot = document.createElement('div'); foot.className = 'side-foot';
+      foot.innerHTML = (me ? '@'+me.username+'<br>' : '') + 'v'+APP_VERSION;
+      $tabbar.parentNode.appendChild(foot);
+    }
   }
 
   function headerHtml(sub){
@@ -3114,7 +3148,7 @@
   function renderLogin(view, msg){
     if(view) authView = view;
     if(msg!==undefined) authForm.err = msg;
-    $tabbarWrap.style.display = 'none';
+    $tabbarWrap.style.display = 'none'; document.body.classList.add('nosidebar');
     if(!authForm.legacy && legacyLocal && legacyLocal.syncCode) authForm.legacy = legacyLocal.syncCode;
     if(!authForm.user && authForm.legacy) authForm.user = cleanUser(authForm.legacy).slice(0,20);
     const v = authView;
@@ -3469,7 +3503,7 @@
   function render(){
     if(!me){ renderLogin(); return; }
     if(!state.onboarded){ renderOnboarding(); return; }
-    $tabbarWrap.style.display = 'flex';
+    $tabbarWrap.style.display = 'flex'; document.body.classList.remove('nosidebar');
     document.body.classList.toggle('wide', activeTab==='anual' || activeTab==='dashboard' || activeTab==='movs');
     renderTabbar();
     if(activeTab==='resumen') renderResumen();
@@ -3536,6 +3570,15 @@
     }catch(e){ /* sin conexión: se mira otra vez más tarde */ }
     finally{ updBusy = false; }
   }
+  let lastBp = window.innerWidth>=1000 ? 2 : (window.innerWidth>=900 ? 1 : 0), rzT = null;
+  window.addEventListener('resize', ()=>{ clearTimeout(rzT); rzT = setTimeout(()=>{
+    const bp = window.innerWidth>=1000 ? 2 : (window.innerWidth>=900 ? 1 : 0);
+    if(bp!==lastBp){ lastBp = bp; if(me && state.onboarded && !userIsEditing()) render(); }
+  }, 200); });
+  // sin zoom con los dedos en iPhone (Safari ignora user-scalable)
+  ['gesturestart','gesturechange','gestureend'].forEach(ev=> document.addEventListener(ev, e=>e.preventDefault()));
+  let lastTouchEnd = 0;
+  document.addEventListener('touchend', e=>{ const n = Date.now(); if(n-lastTouchEnd<=300) e.preventDefault(); lastTouchEnd = n; }, { passive:false });
   document.addEventListener('visibilitychange', ()=>checkForUpdate(false));
   window.addEventListener('pageshow', ()=>checkForUpdate(false));
   setInterval(()=>checkForUpdate(false), 120000);
