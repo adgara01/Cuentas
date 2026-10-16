@@ -479,6 +479,20 @@
     border:1.5px solid var(--line);border-radius:10px;background:var(--bg);padding:7px 9px;color:var(--ink);
   }
 
+  /* ---------- login ---------- */
+  .auth-wrap{max-width:400px;margin:0 auto;padding:max(36px,env(safe-area-inset-top)) 18px 40px;text-align:center;}
+  .auth-logo{width:84px;height:84px;border-radius:20px;box-shadow:var(--shadow);display:block;margin:0 auto 12px;}
+  .auth-wrap h1{font-size:26px;font-weight:800;letter-spacing:-0.4px;margin:0 0 2px;}
+  .auth-sub{color:var(--ink-soft);font-size:14px;margin-bottom:18px;}
+  .auth-tabs{display:flex;background:var(--line);border-radius:12px;padding:3px;margin-bottom:14px;}
+  .auth-tabs button{flex:1;border:0;background:transparent;color:var(--ink-soft);font:inherit;font-weight:700;font-size:14px;padding:9px 0;border-radius:9px;}
+  .auth-tabs button.on{background:var(--cell);color:var(--ink);box-shadow:var(--shadow);}
+  .auth-card{background:var(--cell);border-radius:18px;padding:16px;box-shadow:var(--shadow);text-align:left;}
+  .auth-note{font-size:12.5px;color:var(--ink-soft);line-height:1.5;margin:4px 0 10px;}
+  .auth-err{color:var(--red);font-size:13px;font-weight:600;min-height:0;margin:6px 0 10px;line-height:1.4;}
+  .auth-err:empty{display:none;}
+  .auth-link{display:block;width:100%;background:none;border:0;color:var(--green);font:inherit;font-weight:700;font-size:13.5px;padding:12px 0 0;text-align:center;}
+  .btn-primary:disabled{opacity:.6;}
   /* ---------- onboarding ---------- */
   .onboard-wrap{max-width:480px;margin:0 auto;padding:32px 16px 40px;}
   .onboard-wrap h1{font-size:23px;font-weight:800;margin-bottom:8px;letter-spacing:-0.3px;}
@@ -522,6 +536,7 @@
 <div class="toast" id="toast"></div>
 <div class="tabbar" id="tabbarWrap"><div class="tabbar-inner" id="tabbar"></div></div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
   const DEFAULT_STATE = {
@@ -580,7 +595,7 @@
   const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,7);
   const accName = id => { const a = state.accounts.find(x=>x.id===id); return a ? a.name : id; };
 
-  const STORAGE_KEY = 'cuentas-data-v1';
+  let STORAGE_KEY = 'cuentas-data-v1';
   const SUPABASE_URL = 'https://aysogafvoexxoosvahdj.supabase.co';
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF5c29nYWZ2b2V4eG9vc3ZhaGRqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ2MjQwNDMsImV4cCI6MjEwMDIwMDA0M30.wccYP_Ejm_fpRJosCNKGMyOnnj0_xhOkRzcLImkzn28';
   let syncStatus = 'idle'; // idle | syncing | synced | error | offline
@@ -632,52 +647,40 @@
   }
 
   function scheduleCloudPush(){
-    if(!state.syncCode) return;
+    if(!me) return;
     clearTimeout(syncTimer);
     syncTimer = setTimeout(pushToCloud, 700); // agrupa cambios rápidos seguidos en una sola subida
   }
   async function pushToCloud(){
     syncTimer = null;
-    if(!state.syncCode) return;
+    if(!me || !sb) return;
     syncStatus = 'syncing';
     try{
-      const res = await fetch(SUPABASE_URL+'/rest/v1/cuentas_sync?on_conflict=sync_code', {
-        method:'POST',
-        headers:{
-          'apikey': SUPABASE_ANON_KEY,
-          'Authorization':'Bearer '+SUPABASE_ANON_KEY,
-          'Content-Type':'application/json',
-          'Prefer':'resolution=merge-duplicates,return=minimal'
-        },
-        body: JSON.stringify({ sync_code: state.syncCode, data: state, updated_at: new Date(state._updatedAt).toISOString() })
-      });
-      syncStatus = res.ok ? 'synced' : 'error';
+      const { error } = await sb.from('cuentas_data').upsert({ user_id: me.id, data: state, updated_at: new Date(state._updatedAt || Date.now()).toISOString() });
+      if(error) console.error('cloud push', error);
+      syncStatus = error ? 'error' : 'synced';
     }catch(e){
       console.error('cloud push failed', e);
       syncStatus = 'offline';
     }
     if(activeTab==='ajustes') renderSyncStatusOnly();
   }
-  async function pullFromCloud(code){
-    const res = await fetch(SUPABASE_URL+'/rest/v1/cuentas_sync?sync_code=eq.'+encodeURIComponent(code)+'&select=data,updated_at', {
-      headers:{ 'apikey': SUPABASE_ANON_KEY, 'Authorization':'Bearer '+SUPABASE_ANON_KEY }
-    });
-    if(!res.ok) throw new Error('pull failed');
-    const arr = await res.json();
-    return arr && arr[0] ? arr[0] : null;
+  async function pullFromCloud(){
+    const { data, error } = await sb.from('cuentas_data').select('data,updated_at').eq('user_id', me.id).maybeSingle();
+    if(error) throw error;
+    return data || null;
   }
   async function syncWithCloud(code, opts){
     opts = opts || {};
     syncStatus = 'syncing';
     try{
-      const remote = await pullFromCloud(code);
+      const remote = await pullFromCloud();
       if(remote){
         const remoteTime = new Date(remote.updated_at).getTime();
         const localTime = state._updatedAt || 0;
         if(remote.data && (remoteTime > localTime || opts.forcePull)){
-          const keepCode = code;
           state = Object.assign(JSON.parse(JSON.stringify(DEFAULT_STATE)), remote.data);
-          state.syncCode = keepCode;
+          state.syncCode = '';
           localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
           syncStatus = 'synced';
           return 'pulled';
@@ -702,7 +705,6 @@
     if(el) el.innerHTML = syncStatusLabel();
   }
   function syncStatusLabel(){
-    if(!state.syncCode) return '<span style="color:var(--muted);">Sin código — los datos solo viven en este dispositivo.</span>';
     if(syncStatus==='syncing') return '<span style="color:var(--muted);">Sincronizando…</span>';
     if(syncStatus==='synced') return '<span style="color:var(--green);">✓ Sincronizado con la nube</span>';
     if(syncStatus==='offline'||syncStatus==='error') return '<span style="color:var(--red);">Sin conexión — se sincronizará cuando vuelva internet</span>';
@@ -982,12 +984,7 @@
       $app.innerHTML = `
         <div class="onboard-wrap">
           <h1>Antes de empezar</h1>
-          <div class="cell" style="margin-bottom:22px;">
-            <div class="section-title" style="margin-bottom:10px;">¿Ya usas Cuentas en otro dispositivo?</div>
-            <div class="field"><label>Código de sincronización</label><input type="text" id="obSyncCode" placeholder="tu código"></div>
-            <button class="btn-ghost" id="obRestore" style="margin-top:2px;">Restaurar desde la nube</button>
-          </div>
-          <p>O, si es la primera vez: pon el nombre de tus cuentas (puedes cambiarlas, borrarlas o añadir las que quieras) y cuánto hay en cada una ahora mismo. Será el punto de partida.</p>
+          <p>Pon el nombre de tus cuentas (puedes cambiarlas, borrarlas o añadir las que quieras) y cuánto hay en cada una ahora mismo. Será el punto de partida.</p>
           <div id="obList">
             ${state.accounts.map(a=>`
               <div class="ob-acc" data-acc="${a.id}">
@@ -1004,27 +1001,6 @@
           <button class="btn-primary" id="obStart" style="margin-top:16px;">Empezar</button>
         </div>
       `;
-      document.getElementById('obRestore').onclick = async ()=>{
-        const code = document.getElementById('obSyncCode').value.trim();
-        if(!code){ showToast('Escribe tu código'); return; }
-        showToast('Buscando en la nube…');
-        try{
-          const remote = await pullFromCloud(code);
-          if(remote && remote.data){
-            state = Object.assign(JSON.parse(JSON.stringify(DEFAULT_STATE)), remote.data);
-            state.syncCode = code;
-            state.onboarded = true;
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-            $tabbarWrap.style.display = 'flex';
-            showToast('Datos restaurados');
-            render();
-          } else {
-            showToast('No hay datos con ese código todavía');
-          }
-        }catch(e){
-          showToast('Sin conexión, inténtalo de nuevo');
-        }
-      };
       document.querySelectorAll('.ob-del-btn').forEach(btn=>{
         btn.onclick = (e)=>{
           e.preventDefault();
@@ -2136,6 +2112,23 @@
 
     let html = headerHtml('Objetivos y ajustes');
 
+    html += collapsibleCard('sync', 'Mi cuenta', `
+        <div class="exp-row" style="border-top:none;padding-top:0;">
+          <div class="exp-name">Usuario</div>
+          <div class="mono" style="font-weight:700;">@${me ? me.username : ''}</div>
+        </div>
+        <div class="exp-row">
+          <div class="exp-name">Correo</div>
+          <div style="font-size:13px;font-weight:600;word-break:break-all;text-align:right;">${authEmail||'—'}</div>
+        </div>
+        <div id="syncStatusText" style="font-size:12px;margin:8px 0 12px;">${syncStatusLabel()}</div>
+        <button class="btn-ghost" id="syncNowBtn">Sincronizar ahora</button>
+        <button class="btn-ghost" id="accMailBtn" style="margin-top:8px;">Cambiar correo</button>
+        <button class="btn-ghost" id="accPwBtn" style="margin-top:8px;">Cambiar contraseña</button>
+        <button class="btn-ghost" id="accKeyBtn" style="margin-top:8px;">Clave del Atajo</button>
+        <button class="btn-secondary" id="logoutBtn" style="margin-top:8px;">Cerrar sesión</button>
+      `);
+
     html += collapsibleCard('apariencia', 'Apariencia', `
       <div class="empty-note" style="padding:0 0 12px;text-align:left;">Automático sigue el modo de tu dispositivo. Se guarda solo en este dispositivo.</div>
       <div class="seg" id="themeSeg" style="margin-bottom:0;">
@@ -2285,20 +2278,6 @@
       </table></div>
     `);
 
-    html += collapsibleCard('sync', 'Sincronización en la nube', state.syncCode ? `
-        <div class="exp-row" style="border-top:none;padding-top:0;">
-          <div class="exp-name">Código activo</div>
-          <div class="mono" style="font-weight:700;">${state.syncCode}</div>
-        </div>
-        <div id="syncStatusText" style="font-size:12px;margin:8px 0 12px;">${syncStatusLabel()}</div>
-        <button class="btn-ghost" id="syncNowBtn">Sincronizar ahora</button>
-        <button class="btn-secondary" id="syncOffBtn">Desactivar sincronización</button>
-      ` : `
-        <div class="empty-note" style="padding:0 0 12px;text-align:left;">Crea un código para poder ver y editar estos mismos datos desde el ordenador u otro dispositivo, abriendo la misma app con ese código.</div>
-        <div class="field"><label>Código de sincronización</label><input type="text" id="newSyncCode" placeholder="ej. adri-cuentas-2026"></div>
-        <button class="btn-primary" id="syncOnBtn">Activar sincronización</button>
-      `);
-
     html += collapsibleCard('export', 'Exportar a Excel', `
       <div class="field"><label>Correo para enviarlo</label><input type="email" id="exportEmail" value="${state.exportEmail||''}" placeholder="tucorreo@ejemplo.com"></div>
       <button class="btn-primary" id="exportBtn">Descargar y preparar correo</button>
@@ -2307,49 +2286,17 @@
 
     $app.innerHTML = html;
 
-    const syncOnBtn = document.getElementById('syncOnBtn');
-    if(syncOnBtn) syncOnBtn.onclick = async ()=>{
-      const code = document.getElementById('newSyncCode').value.trim();
-      if(!code){ showToast('Escribe un código'); return; }
-      showToast('Comprobando código…');
-      let remote = null;
-      try{ remote = await pullFromCloud(code); }catch(e){ /* sin conexión, tratamos como si no hubiera remoto */ }
-      if(remote && remote.data){
-        const useRemote = confirm('Ya hay datos guardados con ese código en la nube.\n\nAceptar = usar esos datos (sustituye lo que tienes en este dispositivo).\nCancelar = subir lo de este dispositivo (sustituye lo que hay en la nube).');
-        if(useRemote){
-          state = Object.assign(JSON.parse(JSON.stringify(DEFAULT_STATE)), remote.data);
-          state.syncCode = code;
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-          syncStatus = 'synced';
-          showToast('Datos de la nube cargados');
-        } else {
-          state.syncCode = code;
-          await saveState();
-          await pushToCloud();
-          showToast('Tus datos subidos a la nube');
-        }
-      } else {
-        state.syncCode = code;
-        await saveState();
-        await pushToCloud();
-        showToast('Sincronización activada');
-      }
-      renderAjustes();
-    };
     const syncNowBtn = document.getElementById('syncNowBtn');
     if(syncNowBtn) syncNowBtn.onclick = async ()=>{
       showToast('Sincronizando…');
-      await syncWithCloud(state.syncCode);
+      await syncWithCloud();
       showToast(syncStatus==='synced' ? 'Sincronizado' : 'Sin conexión');
       renderAjustes();
     };
-    const syncOffBtn = document.getElementById('syncOffBtn');
-    if(syncOffBtn) syncOffBtn.onclick = async ()=>{
-      if(!confirm('¿Desactivar sincronización? Este dispositivo dejará de subir y bajar cambios de la nube (tus datos seguirán aquí en local).')) return;
-      state.syncCode = '';
-      await saveState();
-      renderAjustes();
-    };
+    document.getElementById('accMailBtn').onclick = openChangeEmail;
+    document.getElementById('accPwBtn').onclick = openChangePassword;
+    document.getElementById('accKeyBtn').onclick = openShortcutKey;
+    document.getElementById('logoutBtn').onclick = doLogout;
 
     document.getElementById('paydayInput').onchange = e=>{
       let v = parseInt(e.target.value,10)||1;
@@ -2772,8 +2719,426 @@
   }
   $overlay.onclick = (e)=>{ if(e.target===$overlay) $overlay.classList.remove('show'); };
 
+  // ================= CUENTA / LOGIN =================
+  let sb = null, me = null, authEmail = '', loadedUserId = null;
+  const AUTH_FN = 'cuentas-auth';
+  const LEGACY_KEY = 'cuentas-data-v1';
+  let legacyLocal = null; // datos antiguos de este dispositivo (antes del login)
+  let authLockQueue = Promise.resolve();
+  function authLock(name, timeout, fn){
+    const prev = authLockQueue;
+    const wait = Promise.race([prev.catch(()=>{}), new Promise(r=> setTimeout(r, 4000))]);
+    const run = wait.then(()=> fn());
+    authLockQueue = run.catch(()=>{});
+    return run;
+  }
+  function initSb(){
+    if(sb) return sb;
+    if(!window.supabase) return null;
+    sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth:{ lock: authLock } });
+    sb.auth.onAuthStateChange(ev=>{
+      if(ev==='SIGNED_OUT' && me && !loggingOut){ showToast('Tu sesión ha caducado. Vuelve a entrar.'); setTimeout(()=>location.reload(), 800); }
+    });
+    return sb;
+  }
+  let loggingOut = false;
+  function readLegacy(){
+    try{ const raw = localStorage.getItem(LEGACY_KEY); if(raw) legacyLocal = JSON.parse(raw); }catch(e){}
+  }
+  const RE_USER = /^[a-z0-9_]{3,20}$/, RE_MAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/, RE_CODE = /^\d{6,10}$/;
+  const cleanUser = v => String(v||'').normalize('NFKC').replace(/[\s​-‍﻿-]+/g,'').toLowerCase().replace(/^@/,'');
+  function translateAuthError(e){
+    const m = String((e && (e.message||e.error_description||e.code)) || e || '').toLowerCase();
+    if(/failed to fetch|network|load failed/.test(m)) return 'No hay conexión con el servidor ahora mismo. Inténtalo en un rato.';
+    if(/invalid login credentials/.test(m)) return 'Usuario o contraseña incorrectos.';
+    if(/already registered/.test(m)) return 'Ese usuario ya está registrado.';
+    if(/rate|seconds|too many/.test(m)) return 'Demasiados intentos. Espera un minuto y vuelve a probar.';
+    if(/smtp|sending|error sending/.test(m)) return 'No se ha podido enviar el correo ahora mismo. Inténtalo en un rato.';
+    if(/email not confirmed/.test(m)) return 'Tienes que confirmar el correo antes de entrar.';
+    if(/invalid.*email|email.*invalid/.test(m)) return 'Ese correo no parece válido.';
+    if(/expired|invalid|otp|token/.test(m)) return 'El código no es correcto o ha caducado.';
+    return 'Algo ha fallado: '+(e && e.message ? e.message : m);
+  }
+  async function nfAuth(action, payload){
+    try{
+      const { data, error } = await sb.functions.invoke(AUTH_FN, { body: Object.assign({action}, payload) });
+      if(error) return { error:'unavailable' };
+      return data || { error:'unavailable' };
+    }catch(e){ return { error:'unavailable' }; }
+  }
+  async function fetchProfile(authId){
+    const ck = 'cuentas-profile-'+authId;
+    try{
+      const { data, error } = await sb.from('cuentas_perfiles').select('id,username').eq('auth_user_id', authId).maybeSingle();
+      if(error) throw error;
+      if(data){ try{ localStorage.setItem(ck, JSON.stringify(data)); }catch(e){} }
+      return data;
+    }catch(e){
+      try{ const c = localStorage.getItem(ck); if(c) return JSON.parse(c); }catch(_){}
+      return null;
+    }
+  }
+
+  // ---------- pantalla de login ----------
+  const LOGO_URL = ()=> { const l = document.querySelector('link[rel="apple-touch-icon"]'); return l ? l.href : ''; };
+  let authView = 'login';
+  let authForm = { id:'', user:'', email:'', legacy:'', code:'', msg:'', err:'' };
+  function renderLogin(view, msg){
+    if(view) authView = view;
+    if(msg!==undefined) authForm.err = msg;
+    $tabbarWrap.style.display = 'none';
+    if(!authForm.legacy && legacyLocal && legacyLocal.syncCode) authForm.legacy = legacyLocal.syncCode;
+    if(!authForm.user && authForm.legacy) authForm.user = cleanUser(authForm.legacy).slice(0,20);
+    const v = authView;
+    const tabs = (v==='login'||v==='signup1') ? `
+      <div class="auth-tabs">
+        <button class="${v==='login'?'on':''}" data-go="login">Entrar</button>
+        <button class="${v==='signup1'?'on':''}" data-go="signup1">Crear cuenta</button>
+      </div>` : '';
+    let body = '';
+    if(v==='login') body = `
+      <div class="field"><label>Usuario o correo</label><input type="text" id="aId" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" value="${authForm.id}"></div>
+      <div class="field"><label>Contraseña</label><input type="password" id="aPw" autocomplete="current-password"></div>
+      <div class="auth-err" id="aErr">${authForm.err||''}</div>
+      <button class="btn-primary" id="aGo">Entrar</button>
+      <button class="auth-link" data-go="rec1">¿Has olvidado tu contraseña?</button>`;
+    if(v==='signup1') body = `
+      <div class="field"><label>Usuario</label><input type="text" id="aUser" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="letras, números y _" value="${authForm.user}"></div>
+      <div class="field"><label>Correo (para recuperar la contraseña)</label><input type="email" id="aMail" autocomplete="email" autocapitalize="off" value="${authForm.email}"></div>
+      <div class="field"><label>Código de sincronización anterior (solo si ya usabas Cuentas)</label><input type="text" id="aLegacy" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="opcional" value="${authForm.legacy}"></div>
+      <div class="auth-note">Te mandamos un código al correo para confirmar que es tuyo.</div>
+      <div class="auth-err" id="aErr">${authForm.err||''}</div>
+      <button class="btn-primary" id="aGo">Enviarme un código</button>`;
+    if(v==='signup2') body = `
+      <div class="auth-note" style="margin-top:0;">Te hemos enviado un código a <b>${authForm.email}</b>. Si no lo ves, mira en correo no deseado.</div>
+      <div class="field"><label>Código</label><input type="text" id="aCode" inputmode="numeric" autocomplete="one-time-code" maxlength="10" class="mono-input"></div>
+      <div class="auth-err" id="aErr">${authForm.err||''}</div>
+      <button class="btn-primary" id="aGo">Confirmar código</button>
+      <button class="auth-link" id="aResend">Reenviar el código</button>
+      <button class="auth-link" data-go="signup1">Cambiar el correo</button>`;
+    if(v==='signup3') body = `
+      <div class="auth-note" style="margin-top:0;">✓ Correo confirmado. Ahora elige tu contraseña.</div>
+      <div class="field"><label>Contraseña (mínimo 6)</label><input type="password" id="aPw1" autocomplete="new-password"></div>
+      <div class="field"><label>Repite la contraseña</label><input type="password" id="aPw2" autocomplete="new-password"></div>
+      <div class="auth-err" id="aErr">${authForm.err||''}</div>
+      <button class="btn-primary" id="aGo">Crear cuenta</button>`;
+    if(v==='rec1') body = `
+      <div class="auth-note" style="margin-top:0;">Escribe el correo de tu cuenta y te mandamos un código.</div>
+      <div class="field"><label>Tu correo</label><input type="email" id="aMail" autocomplete="email" autocapitalize="off" value="${authForm.email}"></div>
+      <div class="auth-err" id="aErr">${authForm.err||''}</div>
+      <button class="btn-primary" id="aGo">Enviarme un código</button>
+      <button class="auth-link" data-go="login">Volver</button>`;
+    if(v==='rec2') body = `
+      <div class="auth-note" style="margin-top:0;">Si <b>${authForm.email}</b> es el correo de una cuenta, te hemos enviado un código.</div>
+      <div class="field"><label>Código</label><input type="text" id="aCode" inputmode="numeric" autocomplete="one-time-code" maxlength="10" class="mono-input"></div>
+      <div class="field"><label>Contraseña nueva (mínimo 6)</label><input type="password" id="aPw1" autocomplete="new-password"></div>
+      <div class="field"><label>Repite la contraseña</label><input type="password" id="aPw2" autocomplete="new-password"></div>
+      <div class="auth-err" id="aErr">${authForm.err||''}</div>
+      <button class="btn-primary" id="aGo">Cambiar contraseña y entrar</button>
+      <button class="auth-link" id="aResend">Reenviar el código</button>
+      <button class="auth-link" data-go="login">Volver</button>`;
+    const title = {login:'Entrar', signup1:'Crear cuenta', signup2:'Confirma tu correo', signup3:'Elige tu contraseña', rec1:'Recuperar contraseña', rec2:'Contraseña nueva'}[v];
+    $app.innerHTML = `
+      <div class="auth-wrap">
+        <img class="auth-logo" src="${LOGO_URL()}" alt="Cuentas">
+        <h1>Cuentas</h1>
+        <div class="auth-sub">${title}</div>
+        ${tabs}
+        <div class="auth-card">${body}</div>
+      </div>`;
+    authForm.err = '';
+    const $ = id => document.getElementById(id);
+    const setErr = t => { const e = $('aErr'); if(e) e.textContent = t||''; };
+    const busy = (b, on, txt)=>{ if(!b) return; b.disabled = on; if(txt!==undefined){ if(on){ b._t = b.textContent; b.textContent = txt; } else if(b._t) b.textContent = b._t; } };
+    $app.querySelectorAll('[data-go]').forEach(el=> el.onclick = ()=>{ saveFields(); authForm.err=''; renderLogin(el.dataset.go); });
+    function saveFields(){
+      if($('aId')) authForm.id = $('aId').value;
+      if($('aUser')) authForm.user = $('aUser').value;
+      if($('aMail')) authForm.email = $('aMail').value.trim();
+      if($('aLegacy')) authForm.legacy = $('aLegacy').value.trim();
+    }
+    const go = $('aGo');
+    ['aId','aPw','aUser','aMail','aLegacy','aCode','aPw1','aPw2'].forEach(id=>{ const el=$(id); if(el) el.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); go && go.click(); } }); });
+    if(!sb && go){ setErr('No se ha podido cargar el sistema de cuentas. Comprueba la conexión y recarga.'); }
+
+    if(v==='login') go.onclick = async ()=>{
+      const raw = $('aId').value.trim(), pw = $('aPw').value;
+      authForm.id = raw;
+      if(!raw || !pw){ setErr('Escribe tu usuario (o correo) y tu contraseña.'); return; }
+      busy(go, true, 'Entrando…');
+      try{
+        const isMail = raw.includes('@') && !raw.startsWith('@');
+        let res;
+        if(isMail){
+          res = await sb.auth.signInWithPassword({ email: raw.toLowerCase(), password: pw });
+          if(res.error && /invalid login/i.test(res.error.message) && pw!==pw.trim()) res = await sb.auth.signInWithPassword({ email: raw.toLowerCase(), password: pw.trim() });
+        } else {
+          const uname = cleanUser(raw);
+          let r = await nfAuth('login', { username: uname, password: pw });
+          if(r.error==='invalid' && pw!==pw.trim()) r = await nfAuth('login', { username: uname, password: pw.trim() });
+          if(r.ok && r.session) res = await sb.auth.setSession(r.session);
+          else if(r.error==='rate_limit') res = { error:{ message:'rate limit' } };
+          else if(r.error==='unavailable'){
+            const mem = (()=>{ try{ return localStorage.getItem('cuentas-email-'+uname); }catch(e){ return null; } })();
+            if(mem) res = await sb.auth.signInWithPassword({ email: mem, password: pw });
+            else res = { error:{ message:'No se puede entrar con el usuario ahora mismo. Prueba con tu correo.' } };
+          } else res = { error:{ message:'Invalid login credentials' } };
+        }
+        if(res.error) throw res.error;
+        const user = res.data.user || (res.data.session && res.data.session.user);
+        const prof = await fetchProfile(user.id);
+        if(!prof){ await sb.auth.signOut(); throw { message:'Esa cuenta no tiene perfil en Cuentas. Crea la cuenta primero.' }; }
+        try{ localStorage.setItem('cuentas-email-'+prof.username, user.email); }catch(e){}
+        authEmail = user.email;
+        await enterApp(prof, {});
+      }catch(e){ busy(go,false); setErr(translateAuthError(e)); }
+    };
+
+    async function sendCode(){
+      saveFields();
+      const uname = cleanUser(authForm.user), mail = authForm.email.toLowerCase();
+      if(!RE_USER.test(uname)){ setErr('El usuario: de 3 a 20 letras, números o _ (sin espacios ni acentos).'); return; }
+      if(!RE_MAIL.test(mail)){ setErr('Ese correo no parece válido.'); return; }
+      authForm.user = uname; authForm.email = mail;
+      busy(go, true, 'Enviando…');
+      try{
+        const t = await sb.rpc('cuentas_username_taken', { p_name: uname });
+        if(t.error) throw t.error;
+        if(t.data){ busy(go,false); setErr('Ese usuario ya está cogido. Elige otro.'); return; }
+        const { error } = await sb.auth.signInWithOtp({ email: mail, options:{ shouldCreateUser:true } });
+        if(error) throw error;
+        renderLogin('signup2');
+      }catch(e){ busy(go,false); setErr(translateAuthError(e)); }
+    }
+    if(v==='signup1') go.onclick = sendCode;
+
+    if(v==='signup2'){
+      $('aResend').onclick = async ()=>{
+        try{ const { error } = await sb.auth.signInWithOtp({ email: authForm.email, options:{ shouldCreateUser:true } }); if(error) throw error; setErr(''); showToast('Código reenviado'); }
+        catch(e){ setErr(translateAuthError(e)); }
+      };
+      go.onclick = async ()=>{
+        const code = $('aCode').value.trim();
+        if(!RE_CODE.test(code)){ setErr('Escribe el código que te ha llegado al correo.'); return; }
+        busy(go, true, 'Comprobando…');
+        try{
+          const { data, error } = await sb.auth.verifyOtp({ email: authForm.email, token: code, type:'email' });
+          if(error) throw error;
+          const user = data.user || (data.session && data.session.user);
+          const ex = await sb.from('cuentas_perfiles').select('username').eq('auth_user_id', user.id).maybeSingle();
+          if(ex.data){ await sb.auth.signOut(); busy(go,false); renderLogin('login', 'Ese correo ya tiene cuenta (@'+ex.data.username+'). Entra con tu usuario o con el correo.'); return; }
+          const ins = await sb.from('cuentas_perfiles').insert({ username: authForm.user, auth_user_id: user.id }).select('id,username').single();
+          if(ins.error){
+            await sb.auth.signOut();
+            const taken = /duplicate|unique|23505/i.test(ins.error.message||ins.error.code||'');
+            busy(go,false); renderLogin('signup1', taken ? 'Ese usuario se acaba de coger. Elige otro.' : translateAuthError(ins.error)); return;
+          }
+          authForm._profile = ins.data; authForm._email = user.email;
+          renderLogin('signup3');
+        }catch(e){ busy(go,false); setErr(translateAuthError(e)); }
+      };
+    }
+    if(v==='signup3') go.onclick = async ()=>{
+      const p1 = $('aPw1').value, p2 = $('aPw2').value;
+      if(p1.length<6){ setErr('La contraseña tiene que tener al menos 6 caracteres.'); return; }
+      if(p1!==p2){ setErr('Las dos contraseñas no coinciden.'); return; }
+      busy(go, true, 'Creando…');
+      try{
+        const { error } = await sb.auth.updateUser({ password: p1 });
+        if(error && !/same_password|different from the old/i.test(error.code||error.message||'')) throw error;
+        const prof = authForm._profile;
+        try{ localStorage.setItem('cuentas-email-'+prof.username, authForm._email); }catch(e){}
+        authEmail = authForm._email;
+        const legacy = authForm.legacy;
+        await enterApp(prof, { legacyCode: legacy });
+      }catch(e){ busy(go,false); setErr(translateAuthError(e)); }
+    };
+
+    if(v==='rec1') go.onclick = async ()=>{
+      saveFields();
+      const mail = authForm.email.toLowerCase();
+      if(!mail.includes('@')){ setErr('Escribe el correo de tu cuenta (no el usuario).'); return; }
+      if(!RE_MAIL.test(mail)){ setErr('Ese correo no parece válido.'); return; }
+      authForm.email = mail;
+      busy(go, true, 'Enviando…');
+      try{ const { error } = await sb.auth.resetPasswordForEmail(mail); if(error) throw error; renderLogin('rec2'); }
+      catch(e){ busy(go,false); setErr(translateAuthError(e)); }
+    };
+    if(v==='rec2'){
+      $('aResend').onclick = async ()=>{
+        try{ const { error } = await sb.auth.resetPasswordForEmail(authForm.email); if(error) throw error; setErr(''); showToast('Código reenviado'); }
+        catch(e){ setErr(translateAuthError(e)); }
+      };
+      go.onclick = async ()=>{
+        const code = $('aCode').value.trim(), p1 = $('aPw1').value, p2 = $('aPw2').value;
+        if(!RE_CODE.test(code)){ setErr('Escribe el código que te ha llegado al correo.'); return; }
+        if(p1.length<6){ setErr('La contraseña tiene que tener al menos 6 caracteres.'); return; }
+        if(p1!==p2){ setErr('Las dos contraseñas no coinciden.'); return; }
+        busy(go, true, 'Cambiando…');
+        try{
+          const vr = await sb.auth.verifyOtp({ email: authForm.email, token: code, type:'recovery' });
+          if(vr.error) throw { message:'expired otp' };
+          const { error } = await sb.auth.updateUser({ password: p1 });
+          if(error && !/same_password|different from the old/i.test(error.code||error.message||'')) throw error;
+          const user = vr.data.user || (vr.data.session && vr.data.session.user);
+          const prof = await fetchProfile(user.id);
+          if(!prof){ await sb.auth.signOut(); throw { message:'Esa cuenta no tiene perfil en Cuentas. Crea la cuenta primero.' }; }
+          try{ localStorage.setItem('cuentas-email-'+prof.username, user.email); }catch(e){}
+          authEmail = user.email;
+          await enterApp(prof, {});
+        }catch(e){ busy(go,false); setErr(translateAuthError(e)); }
+      };
+    }
+  }
+
+  // ---------- entrar en la app con una cuenta ----------
+  async function enterApp(profile, opts){
+    opts = opts || {};
+    if(loadedUserId && loadedUserId !== profile.id){ location.reload(); return; }
+    me = profile; loadedUserId = profile.id;
+    STORAGE_KEY = 'cuentas-data-u-'+profile.id;
+    state = JSON.parse(JSON.stringify(DEFAULT_STATE));
+    await loadState();
+    if(!authEmail){ try{ const s = await sb.auth.getSession(); authEmail = (s.data.session && s.data.session.user.email) || ''; }catch(e){} }
+    let remote;
+    try{ remote = await pullFromCloud(); }catch(e){ remote = undefined; } // undefined = sin conexión
+    if(remote === null && !state.onboarded){
+      const code = (opts.legacyCode || '').trim() || (legacyLocal && legacyLocal.syncCode) || '';
+      let done = false;
+      if(code){
+        try{
+          const r = await sb.rpc('cuentas_reclamar_antiguo', { p_code: code });
+          if(r.data && r.data.ok){
+            state = Object.assign(JSON.parse(JSON.stringify(DEFAULT_STATE)), r.data.data);
+            state.syncCode = ''; state.onboarded = true;
+            try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(e){}
+            showToast('Tus datos de «'+code+'» están en tu cuenta');
+            done = true; legacyLocal = null;
+            try{ localStorage.removeItem(LEGACY_KEY); }catch(e){}
+          } else if(opts.legacyCode){
+            showToast(r.data && r.data.motivo==='ya_reclamado' ? 'Ese código ya está en otra cuenta' : 'No se han encontrado datos con ese código');
+          }
+        }catch(e){}
+      }
+      if(!done && legacyLocal && legacyLocal.onboarded && legacyLocal.transactions){
+        if(confirm('Hay datos de Cuentas guardados en este dispositivo.\n\n¿Son tuyos? Aceptar = ponerlos en tu cuenta. Cancelar = empezar de cero.')){
+          state = Object.assign(JSON.parse(JSON.stringify(DEFAULT_STATE)), legacyLocal);
+          state.syncCode = ''; state._updatedAt = Date.now();
+          try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(e){}
+          await pushToCloud();
+          legacyLocal = null;
+          try{ localStorage.removeItem(LEGACY_KEY); }catch(e){}
+        }
+      }
+    } else if(remote !== undefined){
+      await syncWithCloud();
+    }
+    initTokenPrefetch();
+    render();
+  }
+  function initTokenPrefetch(){ /* reservado */ }
+
+  async function doLogout(){
+    if(!confirm('¿Cerrar sesión en este dispositivo?')) return;
+    loggingOut = true;
+    try{ await sb.auth.signOut(); }catch(e){}
+    location.reload();
+  }
+
+  // ---------- hojas de Ajustes: correo, contraseña, clave del atajo ----------
+  function sheetErr(t){ const e = $sheet.querySelector('.auth-err'); if(e) e.textContent = t||''; }
+  function openChangeEmail(){
+    $sheet.innerHTML = `<h2>Cambiar el correo</h2>
+      <div class="field"><label>Correo nuevo</label><input type="email" id="ceMail" autocapitalize="off"></div>
+      <div id="ceCodeBox" style="display:none;"><div class="auth-note" style="margin-top:0;">Te hemos enviado un código al correo nuevo.</div>
+        <div class="field"><label>Código</label><input type="text" id="ceCode" inputmode="numeric" autocomplete="one-time-code" maxlength="10" class="mono-input"></div></div>
+      <div class="auth-err"></div>
+      <button class="btn-primary" id="ceGo">Enviarme un código</button>
+      <button class="btn-ghost" id="ceCancel" style="margin-top:8px;">Cancelar</button>`;
+    $overlay.classList.add('show');
+    let step = 1, mail = '';
+    $sheet.querySelector('#ceCancel').onclick = ()=> $overlay.classList.remove('show');
+    $sheet.querySelector('#ceGo').onclick = async (ev)=>{
+      const b = ev.target; b.disabled = true;
+      try{
+        if(step===1){
+          mail = $sheet.querySelector('#ceMail').value.trim().toLowerCase();
+          if(!RE_MAIL.test(mail)) throw { message:'invalid email' };
+          const { data, error } = await sb.auth.updateUser({ email: mail });
+          if(error) throw error;
+          if(data.user && data.user.email === mail){ authEmail = mail; $overlay.classList.remove('show'); showToast('Correo guardado'); renderAjustes(); return; }
+          step = 2; $sheet.querySelector('#ceCodeBox').style.display = 'block'; b.textContent = 'Confirmar'; sheetErr('');
+        } else {
+          const code = $sheet.querySelector('#ceCode').value.trim();
+          if(!RE_CODE.test(code)) throw { message:'invalid otp' };
+          const { error } = await sb.auth.verifyOtp({ email: mail, token: code, type:'email_change' });
+          if(error) throw error;
+          await sb.auth.refreshSession();
+          const s = await sb.auth.getSession();
+          const now = s.data.session && s.data.session.user.email;
+          if(now !== mail) throw { message:'El correo no ha cambiado. En Supabase hay que desactivar «Secure email change».' };
+          authEmail = mail;
+          try{ localStorage.setItem('cuentas-email-'+me.username, mail); }catch(e){}
+          $overlay.classList.remove('show'); showToast('Correo cambiado'); renderAjustes(); return;
+        }
+      }catch(e){ sheetErr(translateAuthError(e)); }
+      b.disabled = false;
+    };
+  }
+  function openChangePassword(){
+    $sheet.innerHTML = `<h2>Cambiar la contraseña</h2>
+      <div class="field"><label>Contraseña actual</label><input type="password" id="cpOld" autocomplete="current-password"></div>
+      <div class="field"><label>Contraseña nueva (mínimo 6)</label><input type="password" id="cpNew" autocomplete="new-password"></div>
+      <div class="field"><label>Repite la contraseña nueva</label><input type="password" id="cpNew2" autocomplete="new-password"></div>
+      <div class="auth-err"></div>
+      <button class="btn-primary" id="cpGo">Cambiar contraseña</button>
+      <button class="btn-ghost" id="cpCancel" style="margin-top:8px;">Cancelar</button>`;
+    $overlay.classList.add('show');
+    $sheet.querySelector('#cpCancel').onclick = ()=> $overlay.classList.remove('show');
+    $sheet.querySelector('#cpGo').onclick = async (ev)=>{
+      const b = ev.target;
+      const o = $sheet.querySelector('#cpOld').value, n = $sheet.querySelector('#cpNew').value, n2 = $sheet.querySelector('#cpNew2').value;
+      if(!o){ sheetErr('Escribe tu contraseña actual.'); return; }
+      if(n.length<6){ sheetErr('La nueva tiene que tener al menos 6 caracteres.'); return; }
+      if(n!==n2){ sheetErr('Las dos contraseñas nuevas no coinciden.'); return; }
+      if(n===o){ sheetErr('La nueva tiene que ser distinta de la actual.'); return; }
+      b.disabled = true;
+      try{
+        const s = await sb.auth.getSession();
+        const mail = s.data.session && s.data.session.user.email;
+        const chk = await sb.auth.signInWithPassword({ email: mail, password: o });
+        if(chk.error){ sheetErr('La contraseña actual no es correcta.'); b.disabled = false; return; }
+        const { error } = await sb.auth.updateUser({ password: n });
+        if(error) throw error;
+        $overlay.classList.remove('show'); showToast('Contraseña cambiada');
+      }catch(e){ sheetErr(translateAuthError(e)); b.disabled = false; }
+    };
+  }
+  async function openShortcutKey(){
+    $sheet.innerHTML = `<h2>Clave del Atajo</h2>
+      <div class="auth-note" style="margin-top:0;">Es lo que va en el Atajo de iOS (el campo <b>p_code</b>) para que tus gastos entren en TU cuenta. No se la des a nadie.</div>
+      <div class="mono" id="skVal" style="font-weight:700;font-size:13px;word-break:break-all;margin:12px 0;">…</div>
+      <div class="auth-err"></div>
+      <button class="btn-primary" id="skCopy">Copiar</button>
+      <button class="btn-secondary" id="skNew" style="margin-top:8px;">Generar una clave nueva</button>
+      <button class="btn-ghost" id="skClose" style="margin-top:8px;">Cerrar</button>`;
+    $overlay.classList.add('show');
+    const load = async (regen)=>{
+      try{ const { data, error } = await sb.rpc('cuentas_atajo_token', { p_regenerar: !!regen }); if(error) throw error; $sheet.querySelector('#skVal').textContent = data; }
+      catch(e){ sheetErr(translateAuthError(e)); }
+    };
+    await load(false);
+    $sheet.querySelector('#skClose').onclick = ()=> $overlay.classList.remove('show');
+    $sheet.querySelector('#skCopy').onclick = async ()=>{ try{ await navigator.clipboard.writeText($sheet.querySelector('#skVal').textContent); showToast('Copiada'); }catch(e){ showToast('Mantén pulsada la clave para copiarla'); } };
+    $sheet.querySelector('#skNew').onclick = async ()=>{
+      if(!confirm('La clave actual dejará de funcionar y tendrás que ponerla en el Atajo. ¿Generar una nueva?')) return;
+      await load(true); showToast('Clave nueva generada');
+    };
+  }
+
   // ================= ROOT RENDER =================
   function render(){
+    if(!me){ renderLogin(); return; }
     if(!state.onboarded){ renderOnboarding(); return; }
     $tabbarWrap.style.display = 'flex';
     renderTabbar();
@@ -2793,20 +3158,17 @@
     return !!(a && (a.tagName==='INPUT' || a.tagName==='TEXTAREA' || a.tagName==='SELECT'));
   }
   async function liveCheck(force){
-    if(document.visibilityState!=='visible' || !state.syncCode || !state.onboarded) return;
+    if(document.visibilityState!=='visible' || !me || !state.onboarded) return;
     if(liveBusy || syncTimer) return;                       // hay una subida pendiente o una comprobación en curso
     if(!force && Date.now()-lastLiveCheck < 3000) return;
     if(userIsEditing()) return;                             // no pisar lo que se está escribiendo
     liveBusy = true; lastLiveCheck = Date.now();
     try{
-      const res = await fetch(SUPABASE_URL+'/rest/v1/cuentas_sync?sync_code=eq.'+encodeURIComponent(state.syncCode)+'&select=updated_at', {
-        headers:{ 'apikey': SUPABASE_ANON_KEY, 'Authorization':'Bearer '+SUPABASE_ANON_KEY }
-      });
-      if(res.ok){
-        const arr = await res.json();
-        const remoteTime = arr && arr[0] ? new Date(arr[0].updated_at).getTime() : 0;
+      const { data, error } = await sb.from('cuentas_data').select('updated_at').eq('user_id', me.id).maybeSingle();
+      if(!error){
+        const remoteTime = data ? new Date(data.updated_at).getTime() : 0;
         if(remoteTime > (state._updatedAt||0) && !userIsEditing() && !syncTimer){
-          const r = await syncWithCloud(state.syncCode);
+          const r = await syncWithCloud();
           if(r==='pulled' && !userIsEditing()) render();
         }
       }
@@ -2819,11 +3181,20 @@
   setInterval(()=>liveCheck(false), 5000);
 
   (async function init(){
-    await loadState();
-    if(state.syncCode){
-      await syncWithCloud(state.syncCode);
+    readLegacy();
+    if(!initSb()){ renderLogin('login','No se ha podido cargar el sistema de cuentas. Comprueba la conexión y recarga la página.'); return; }
+    let session = null;
+    try{
+      const r = await Promise.race([sb.auth.getSession(), new Promise(res=> setTimeout(()=>res(null), 8000))]);
+      session = r && r.data && r.data.session;
+    }catch(e){}
+    if(session){
+      authEmail = session.user.email || '';
+      const prof = await fetchProfile(session.user.id);
+      if(prof){ await enterApp(prof, {}); return; }
+      try{ await sb.auth.signOut(); }catch(e){}
     }
-    render();
+    renderLogin('login');
   })();
 })();
 </script>
