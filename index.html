@@ -544,6 +544,21 @@
     .movs-filters{grid-template-columns:repeat(4,1fr);}
     .movs-ctrl{flex-direction:column;}
   }
+  /* ---------- bloqueo PIN ---------- */
+  body.privacy-cover #app, body.privacy-cover .tabbar, body.privacy-cover .side-brand{visibility:hidden;}
+  .pinpad{position:fixed;inset:0;z-index:300;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:max(20px,env(safe-area-inset-top)) 20px max(20px,env(safe-area-inset-bottom));}
+  .pin-top{text-align:center;} .pin-top img{width:64px;height:64px;border-radius:15px;box-shadow:var(--shadow);}
+  .pin-title{font-size:20px;font-weight:800;margin-top:10px;letter-spacing:-.3px;} .pin-sub{font-size:13px;color:var(--muted);margin-top:2px;min-height:16px;}
+  .pin-dots{display:flex;gap:16px;margin:6px 0 2px;} .pin-dots i{width:14px;height:14px;border-radius:50%;border:2px solid var(--ink-soft);display:block;transition:background .1s;}
+  .pin-dots i.on{background:var(--ink);border-color:var(--ink);}
+  .pin-dots.shake{animation:pinshake .35s;} @keyframes pinshake{0%,100%{transform:translateX(0)}20%{transform:translateX(-10px)}40%{transform:translateX(10px)}60%{transform:translateX(-7px)}80%{transform:translateX(7px)}}
+  .pin-err{color:var(--red);font-size:13px;font-weight:600;min-height:18px;text-align:center;}
+  .pin-keys{display:grid;grid-template-columns:repeat(3,76px);gap:14px;justify-content:center;}
+  .pin-keys button{width:76px;height:76px;border-radius:50%;border:none;background:var(--cell);box-shadow:var(--shadow);font-size:27px;font-weight:600;color:var(--ink);font-family:inherit;cursor:pointer;-webkit-user-select:none;user-select:none;}
+  .pin-keys button:active{background:var(--green-bg);} .pin-keys button[data-k=bio],.pin-keys button[data-k=del]{background:transparent;box-shadow:none;font-size:13px;font-weight:700;color:var(--ink-soft);}
+  .pin-keys button[data-k=del]{font-size:24px;}
+  .pinpad.waiting .pin-keys{opacity:.4;}
+  .pin-foot{display:flex;gap:18px;min-height:30px;} .pin-link{background:none;border:0;color:var(--green);font:inherit;font-weight:700;font-size:13.5px;cursor:pointer;}
   /* ---------- login ---------- */
   .auth-wrap{max-width:400px;margin:0 auto;padding:max(36px,env(safe-area-inset-top)) 18px 40px;text-align:center;}
   .auth-logo{width:84px;height:84px;border-radius:20px;box-shadow:var(--shadow);display:block;margin:0 auto 12px;}
@@ -604,7 +619,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
-  const APP_VERSION = '2026.10.16-5';
+  const APP_VERSION = '2026.10.16-6';
   const DEFAULT_STATE = {
     onboarded: false,
     accounts: [
@@ -640,7 +655,7 @@
   let dashFiltersOpen = false;
   let presetActive = false;
   let gastoChartMode = 'bars'; // 'bars' | 'battery'
-  let ajustesOpen = { cuentasEditar:false, cuentas:false, categorias:false, grupos:false, payday:true, prevision:true, preset:false, logGasto:false, logIngreso:false, sync:true, export:false };
+  let ajustesOpen = { cuentasEditar:false, cuentas:false, categorias:false, grupos:false, payday:true, prevision:true, preset:false, logGasto:false, logIngreso:false, sync:true, lock:true, export:false };
 
   const $app = document.getElementById('app');
   const $overlay = document.getElementById('overlay');
@@ -2211,6 +2226,8 @@
         <button class="btn-secondary" id="logoutBtn" style="margin-top:8px;">Cerrar sesión</button>
       `);
 
+    html += collapsibleCard('lock', 'Bloqueo con PIN y Face ID', lockCardHtml());
+
     html += collapsibleCard('apariencia', 'Apariencia', `
       <div class="empty-note" style="padding:0 0 12px;text-align:left;">Automático sigue el modo de tu dispositivo. Se guarda solo en este dispositivo.</div>
       <div class="seg" id="themeSeg" style="margin-bottom:0;">
@@ -2379,6 +2396,7 @@
     document.getElementById('accPwBtn').onclick = openChangePassword;
     document.getElementById('accKeyBtn').onclick = openShortcutKey;
     document.getElementById('logoutBtn').onclick = doLogout;
+    bindLockCard();
 
     document.getElementById('paydayInput').onchange = e=>{
       let v = parseInt(e.target.value,10)||1;
@@ -3081,6 +3099,195 @@
     update();
   }
 
+  // ================= BLOQUEO (PIN + Face ID) — solo en este dispositivo =================
+  const LOCK_KEY = ()=> 'cuentas-lock-'+(me ? me.id : 'x');
+  function lockCfg(){ try{ return JSON.parse(localStorage.getItem(LOCK_KEY())||'null'); }catch(e){ return null; } }
+  function saveLockCfg(c){ try{ if(c) localStorage.setItem(LOCK_KEY(), JSON.stringify(c)); else localStorage.removeItem(LOCK_KEY()); }catch(e){} }
+  const lockOn = ()=> { const c = lockCfg(); return !!(c && c.hash); };
+  const b64 = buf => btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(buf))));
+  const unb64 = s => Uint8Array.from(atob(s), c=>c.charCodeAt(0));
+  async function hashPin(pin, saltB64){
+    const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveBits']);
+    const bits = await crypto.subtle.deriveBits({ name:'PBKDF2', salt: unb64(saltB64), iterations:150000, hash:'SHA-256' }, key, 256);
+    return b64(bits);
+  }
+  async function bioAvailable(){
+    try{ return !!(window.PublicKeyCredential && PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()); }catch(e){ return false; }
+  }
+  async function bioRegister(){
+    const cred = await navigator.credentials.create({ publicKey:{
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      rp:{ name:'Cuentas', id: location.hostname },
+      user:{ id: crypto.getRandomValues(new Uint8Array(16)), name: me.username, displayName: me.username },
+      pubKeyCredParams:[{type:'public-key',alg:-7},{type:'public-key',alg:-257}],
+      authenticatorSelection:{ authenticatorAttachment:'platform', userVerification:'required', residentKey:'discouraged' },
+      timeout:60000, attestation:'none' } });
+    return b64(cred.rawId);
+  }
+  async function bioUnlock(){
+    const c = lockCfg();
+    if(!c || !c.bio || !c.credId) return false;
+    try{
+      await navigator.credentials.get({ publicKey:{
+        challenge: crypto.getRandomValues(new Uint8Array(32)),
+        allowCredentials:[{ type:'public-key', id: unb64(c.credId), transports:['internal'] }],
+        userVerification:'required', timeout:60000, rpId: location.hostname } });
+      return true;
+    }catch(e){ return false; }
+  }
+
+  // Teclado numérico a pantalla completa. Devuelve el PIN cuando onSubmit(pin) da true, o null si se cancela.
+  function pad(o){
+    return new Promise(resolve=>{
+      const old = document.getElementById('pinPad'); if(old) old.remove();
+      const el = document.createElement('div'); el.id = 'pinPad'; el.className = 'pinpad';
+      let val = '', busyPad = false, timer = null;
+      const keys = ['1','2','3','4','5','6','7','8','9', o.bio ? 'bio' : '', '0', 'del'];
+      el.innerHTML = `
+        <div class="pin-top"><img src="${LOGO_URL()}" alt=""><div class="pin-title">${o.title||''}</div><div class="pin-sub" id="pinSub">${o.sub||''}</div></div>
+        <div class="pin-dots" id="pinDots">${Array.from({length:o.len}).map(()=>'<i></i>').join('')}</div>
+        <div class="pin-err" id="pinErr"></div>
+        <div class="pin-keys">${keys.map(k=> k==='' ? '<span></span>' : k==='del' ? '<button data-k="del" aria-label="Borrar">⌫</button>' : k==='bio' ? '<button data-k="bio" aria-label="Face ID">'+(o.bioLabel||'Face ID')+'</button>' : `<button data-k="${k}">${k}</button>`).join('')}</div>
+        <div class="pin-foot">${o.cancelable ? '<button class="pin-link" id="pinCancel">Cancelar</button>' : ''}${o.forgot ? '<button class="pin-link" id="pinForgot">¿Has olvidado el PIN?</button>' : ''}</div>`;
+      document.body.appendChild(el);
+      const dots = el.querySelectorAll('#pinDots i'), err = el.querySelector('#pinErr');
+      const paint = ()=> dots.forEach((d,i)=> d.classList.toggle('on', i<val.length));
+      const finish = (v)=>{ document.removeEventListener('keydown', onKey); clearInterval(timer); el.remove(); resolve(v); };
+      function setErr(t){ err.textContent = t||''; }
+      async function submit(){
+        busyPad = true;
+        const r = await o.onSubmit(val);
+        busyPad = false;
+        if(r===true){ const v = val; finish(v); return; }
+        el.querySelector('#pinDots').classList.add('shake'); setTimeout(()=>el.querySelector('#pinDots').classList.remove('shake'), 400);
+        val = ''; paint(); setErr(typeof r==='string' ? r : 'PIN incorrecto');
+        if(o.waitUntil){ tickWait(); }
+      }
+      function tickWait(){
+        clearInterval(timer);
+        const w = o.waitUntil ? o.waitUntil() : 0;
+        if(w>Date.now()){
+          const upd = ()=>{ const s = Math.ceil((w-Date.now())/1000); if(s<=0){ clearInterval(timer); setErr(''); el.classList.remove('waiting'); } else { setErr('Demasiados intentos. Espera '+s+' s'); el.classList.add('waiting'); } };
+          upd(); timer = setInterval(upd, 500);
+        }
+      }
+      function press(k){
+        if(busyPad || el.classList.contains('waiting')) return;
+        if(k==='del'){ val = val.slice(0,-1); paint(); return; }
+        if(k==='bio'){ o.onBio && o.onBio(finish); return; }
+        if(val.length>=o.len) return;
+        val += k; paint(); setErr('');
+        if(val.length===o.len) submit();
+      }
+      function onKey(e){ if(/^[0-9]$/.test(e.key)) press(e.key); else if(e.key==='Backspace') press('del'); }
+      document.addEventListener('keydown', onKey);
+      el.querySelectorAll('.pin-keys button').forEach(b=> b.onclick = ()=>press(b.dataset.k));
+      const c = el.querySelector('#pinCancel'); if(c) c.onclick = ()=>finish(null);
+      const f = el.querySelector('#pinForgot'); if(f) f.onclick = ()=>o.forgot(finish);
+      tickWait();
+      if(o.autoBio) o.onBio(finish, true);
+    });
+  }
+
+  let lockShowing = false, hiddenAt = 0;
+  async function presentLock(){
+    const c0 = lockCfg();
+    if(!c0 || !c0.hash || lockShowing) return;
+    lockShowing = true;
+    const bioOn = !!(c0.bio && c0.credId);
+    await pad({
+      title:'Introduce tu PIN', sub:'@'+(me?me.username:''), len:c0.len||4, bio:bioOn, autoBio:bioOn,
+      waitUntil: ()=> (lockCfg()||{}).until || 0,
+      onBio: async (finish, silent)=>{ if(await bioUnlock()) finish('bio'); else if(!silent) showToast('No se ha podido usar Face ID'); },
+      onSubmit: async (pin)=>{
+        const c = lockCfg(); if(!c) return true;
+        if((c.until||0) > Date.now()) return 'Espera un momento';
+        const h = await hashPin(pin, c.salt);
+        if(h === c.hash){ c.fails = 0; c.until = 0; saveLockCfg(c); return true; }
+        c.fails = (c.fails||0)+1;
+        if(c.fails % 5 === 0) c.until = Date.now() + Math.min(600000, 30000 * Math.pow(2, Math.floor(c.fails/5)-1));
+        saveLockCfg(c);
+        return c.until > Date.now() ? 'Demasiados intentos' : 'PIN incorrecto ('+(5 - c.fails%5)+' intentos antes de esperar)';
+      },
+      forgot: async (finish)=>{
+        if(!confirm('Para volver a entrar tendrás que cerrar sesión y entrar otra vez con tu usuario y contraseña. ¿Continuar?')) return;
+        saveLockCfg(null); loggingOut = true;
+        try{ await sb.auth.signOut(); }catch(e){}
+        location.reload();
+      }
+    });
+    lockShowing = false;
+    document.body.classList.remove('privacy-cover');
+  }
+  // al salir de la app se tapa el contenido (para la vista previa del selector de apps) y al volver se pide el PIN si ha pasado el tiempo
+  document.addEventListener('visibilitychange', ()=>{
+    if(!me || !lockOn()) return;
+    if(document.visibilityState==='hidden'){ hiddenAt = Date.now(); document.body.classList.add('privacy-cover'); }
+    else {
+      const mins = (lockCfg()||{}).timeout || 0;
+      if(hiddenAt && Date.now()-hiddenAt >= mins*60000) presentLock();
+      else document.body.classList.remove('privacy-cover');
+    }
+  });
+
+  // ---------- Ajustes: activar, cambiar y quitar ----------
+  async function setupPin(){
+    if(!(window.crypto && crypto.subtle)){ showToast('Este navegador no permite el PIN aquí'); return; }
+    const len = await new Promise(res=>{
+      $sheet.innerHTML = `<h2>Elige la longitud <span class="close-x" id="plX">✕</span></h2>
+        <button class="btn-primary" id="pl4">PIN de 4 dígitos</button>
+        <button class="btn-ghost" id="pl6" style="margin-top:8px;">PIN de 6 dígitos (más seguro)</button>`;
+      $overlay.classList.add('show');
+      $sheet.querySelector('#plX').onclick = ()=>{ $overlay.classList.remove('show'); res(0); };
+      $sheet.querySelector('#pl4').onclick = ()=>{ $overlay.classList.remove('show'); res(4); };
+      $sheet.querySelector('#pl6').onclick = ()=>{ $overlay.classList.remove('show'); res(6); };
+    });
+    if(!len) return;
+    let first = null;
+    const p1 = await pad({ title:'Elige tu PIN', sub:'Lo pedirá la app al abrirla en este dispositivo', len, cancelable:true, onSubmit: async pin=>{ first = pin; return true; } });
+    if(p1===null) return;
+    const p2 = await pad({ title:'Repite el PIN', sub:'', len, cancelable:true, onSubmit: async pin=> pin===first ? true : 'No coincide, prueba otra vez' });
+    if(p2===null) return;
+    const salt = b64(crypto.getRandomValues(new Uint8Array(16)));
+    const old = lockCfg() || {};
+    saveLockCfg({ len, salt, hash: await hashPin(first, salt), bio: !!old.bio, credId: old.credId||null, timeout: old.timeout||0, fails:0, until:0 });
+    showToast('PIN activado'); renderAjustes();
+  }
+  async function verifyCurrentPin(title){
+    const c = lockCfg(); if(!c) return true;
+    const r = await pad({ title: title||'Introduce tu PIN actual', sub:'', len:c.len||4, cancelable:true,
+      onSubmit: async pin=> (await hashPin(pin, c.salt))===c.hash ? true : 'PIN incorrecto' });
+    return r!==null;
+  }
+  async function toggleBio(){
+    const c = lockCfg(); if(!c) return;
+    if(c.bio){ c.bio = false; c.credId = null; saveLockCfg(c); showToast('Face ID desactivado'); renderAjustes(); return; }
+    if(!(await bioAvailable())){ showToast('Este dispositivo no tiene Face ID / huella disponible'); return; }
+    try{ c.credId = await bioRegister(); c.bio = true; saveLockCfg(c); showToast('Face ID activado'); renderAjustes(); }
+    catch(e){ showToast('No se ha podido activar Face ID'); }
+  }
+  function lockCardHtml(){
+    const c = lockCfg();
+    if(!(c && c.hash)) return `
+      <div class="empty-note" style="padding:0 0 12px;text-align:left;">Pon un PIN para que nadie pueda abrir Cuentas en este dispositivo aunque tenga el móvil o el ordenador desbloqueado. Es solo para este dispositivo. Después puedes añadir Face ID.</div>
+      <button class="btn-primary" id="lkOn">Activar PIN</button>`;
+    return `
+      <div class="exp-row" style="border-top:none;padding-top:0;"><div class="exp-name">PIN</div><div style="font-weight:700;color:var(--green);">Activado · ${c.len||4} dígitos</div></div>
+      <div class="exp-row"><div class="exp-name">Face ID / huella</div><div style="font-weight:700;">${c.bio?'Activado':'Desactivado'}</div></div>
+      <div class="field" style="margin-top:12px;"><label>Pedir el PIN</label>
+        <select id="lkTime">${[[0,'Siempre al volver a la app'],[1,'Tras 1 minuto fuera'],[5,'Tras 5 minutos fuera'],[15,'Tras 15 minutos fuera']].map(([v,l])=>`<option value="${v}" ${(c.timeout||0)===v?'selected':''}>${l}</option>`).join('')}</select></div>
+      <button class="btn-ghost" id="lkBio">${c.bio?'Desactivar Face ID':'Activar Face ID'}</button>
+      <button class="btn-ghost" id="lkChange" style="margin-top:8px;">Cambiar PIN</button>
+      <button class="btn-secondary" id="lkOff" style="margin-top:8px;">Quitar PIN</button>`;
+  }
+  function bindLockCard(){
+    const on = document.getElementById('lkOn'); if(on) on.onclick = setupPin;
+    const t = document.getElementById('lkTime'); if(t) t.onchange = ()=>{ const c = lockCfg(); c.timeout = parseInt(t.value,10)||0; saveLockCfg(c); showToast('Guardado'); };
+    const bio = document.getElementById('lkBio'); if(bio) bio.onclick = async ()=>{ if(await verifyCurrentPin()) toggleBio(); };
+    const ch = document.getElementById('lkChange'); if(ch) ch.onclick = async ()=>{ if(await verifyCurrentPin()) setupPin(); };
+    const off = document.getElementById('lkOff'); if(off) off.onclick = async ()=>{ if(await verifyCurrentPin('Introduce tu PIN para quitarlo')){ saveLockCfg(null); showToast('PIN quitado'); renderAjustes(); } };
+  }
+
   // ================= CUENTA / LOGIN =================
   let sb = null, me = null, authEmail = '', loadedUserId = null;
   const AUTH_FN = 'cuentas-auth';
@@ -3253,7 +3460,7 @@
         if(!prof){ await sb.auth.signOut(); throw { message:'Esa cuenta no tiene perfil en Cuentas. Crea la cuenta primero.' }; }
         try{ localStorage.setItem('cuentas-email-'+prof.username, user.email); }catch(e){}
         authEmail = user.email;
-        await enterApp(prof, {});
+        await enterApp(prof, { fresh:true });
       }catch(e){ busy(go,false); setErr(translateAuthError(e)); }
     };
 
@@ -3313,7 +3520,7 @@
         try{ localStorage.setItem('cuentas-email-'+prof.username, authForm._email); }catch(e){}
         authEmail = authForm._email;
         const legacy = authForm.legacy;
-        await enterApp(prof, { legacyCode: legacy });
+        await enterApp(prof, { legacyCode: legacy, fresh:true });
       }catch(e){ busy(go,false); setErr(translateAuthError(e)); }
     };
 
@@ -3348,7 +3555,7 @@
           if(!prof){ await sb.auth.signOut(); throw { message:'Esa cuenta no tiene perfil en Cuentas. Crea la cuenta primero.' }; }
           try{ localStorage.setItem('cuentas-email-'+prof.username, user.email); }catch(e){}
           authEmail = user.email;
-          await enterApp(prof, {});
+          await enterApp(prof, { fresh:true });
         }catch(e){ busy(go,false); setErr(translateAuthError(e)); }
       };
     }
@@ -3397,6 +3604,7 @@
       await syncWithCloud();
     }
     initTokenPrefetch();
+    if(!opts.fresh && lockOn()){ document.body.classList.add('privacy-cover'); await presentLock(); }
     render();
   }
   function initTokenPrefetch(){ /* reservado */ }
