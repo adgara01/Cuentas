@@ -231,6 +231,31 @@
     .overlay{padding-left:230px;}
     body.nosidebar{padding-left:0;} body.nosidebar .overlay{padding-left:0;}
   }
+  /* ---------- menú lateral más grande y centrado ---------- */
+  @media (min-width:1000px){
+    .tabbar .tab-btn{font-size:16px;font-weight:700;text-align:center;padding:15px 14px;border-radius:12px;}
+    #app{max-width:1100px;}
+    .ins-layout{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,4fr);gap:22px;align-items:start;}
+    .ins-form{display:grid;grid-template-columns:1fr 1fr;column-gap:16px;}
+    .ins-form .two-col{display:contents;}
+    .ins-form > .seg,.ins-form > #catWrap,.ins-form > #dateWrap2,.ins-form > .field:not(#toAccWrap):not(#dateWrap),.ins-form > .check-row,.ins-form > .btn-primary{grid-column:1 / -1;}
+    .ins-form .field input,.ins-form .field select{padding-top:13px;padding-bottom:13px;}
+    .ins-hist{position:sticky;top:16px;max-height:calc(100vh - 40px);overflow:auto;}
+    .res-cols{display:grid;grid-template-columns:1fr 1fr;gap:0 22px;align-items:start;}
+    .res-cols .acc-grid{grid-template-columns:1fr;}
+    .res-charts{display:grid;grid-template-columns:1fr 1fr;gap:0 22px;align-items:start;}
+    .set-cols{column-count:2;column-gap:22px;}
+    .set-cols > *{break-inside:avoid;}
+    .kbd-hint{display:block;}
+  }
+  .kbd-hint{display:none;font-size:11.5px;color:var(--muted);text-align:center;margin-top:8px;}
+  /* ---------- móvil: botón + central ---------- */
+  .tab-spacer{flex:0 0 64px;}
+  .fab-add{position:absolute;left:50%;top:-24px;transform:translateX(-50%);width:62px;height:62px;border-radius:50%;
+    border:4px solid var(--cell);background:var(--green);color:#fff;font-size:34px;font-weight:400;line-height:1;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 6px 16px rgba(20,20,25,0.22);padding:0 0 3px;}
+  .fab-add.active{background:var(--ink);}
+  .fab-add:active{transform:translateX(-50%) scale(.94);}
   /* ---------- tabs ---------- */
   .tabbar{
     position:fixed;bottom:0;left:0;right:0;background:var(--cell);border-top:none;
@@ -559,6 +584,17 @@
   .pin-keys button[data-k=del]{font-size:24px;}
   .pinpad.waiting .pin-keys{opacity:.4;}
   .pin-foot{display:flex;gap:18px;min-height:30px;} .pin-link{background:none;border:0;color:var(--green);font:inherit;font-weight:700;font-size:13.5px;cursor:pointer;}
+  .ana-list{padding:4px 8px 6px;}
+  .ana-row{display:grid;grid-template-columns:34px 1fr 104px;gap:8px;align-items:center;padding:7px 0;border-top:1px solid var(--line);}
+  .ana-row:first-child{border-top:none;}
+  .ana-m{font-size:12px;font-weight:800;color:var(--ink-soft);}
+  .ana-bar{display:flex;align-items:center;gap:6px;margin:3px 0;}
+  .ana-bar .trk{flex:1;display:block;height:12px;background:var(--bg);border-radius:6px;overflow:hidden;}
+  .ana-bar i{display:block;height:100%;border-radius:6px;min-width:2px;}
+  .ana-bar b{font-size:11px;font-weight:700;color:var(--ink-soft);width:62px;text-align:right;white-space:nowrap;}
+  .ana-net{text-align:right;font-weight:800;font-size:14px;line-height:1.15;}
+  .ana-net small{display:block;font-size:10.5px;font-weight:600;color:var(--muted);}
+  .ana-note{font-size:12.5px;line-height:1.5;color:var(--ink-soft);padding:6px 10px 4px;}
   /* ---------- login ---------- */
   .auth-wrap{max-width:400px;margin:0 auto;padding:max(36px,env(safe-area-inset-top)) 18px 40px;text-align:center;}
   .auth-logo{width:84px;height:84px;border-radius:20px;box-shadow:var(--shadow);display:block;margin:0 auto 12px;}
@@ -619,7 +655,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
-  const APP_VERSION = '2026.10.16-6';
+  const APP_VERSION = '2026.10.16-9';
   const DEFAULT_STATE = {
     onboarded: false,
     accounts: [
@@ -1114,11 +1150,11 @@
   // ================= TABS =================
   function renderTabbar(){
     $tabbar.innerHTML = '';
-    $tabbarWrap.querySelectorAll('.side-brand,.side-foot').forEach(e=>e.remove());
+    $tabbarWrap.querySelectorAll('.side-brand,.side-foot,.fab-add').forEach(e=>e.remove());
     const desktop = window.innerWidth>=1000;
-    const tabs = [['resumen','Resumen'],['insertar','Insertar<br>movimiento'],['dashboard','Dashboard'],['anual','Año']];
-    if(window.innerWidth>=900) tabs.push(['movs','Movimientos']);
-    tabs.push(['ajustes','Objetivos y<br>ajustes']);
+    let tabs;
+    if(desktop) tabs = [['resumen','Resumen'],['insertar','Insertar movimiento'],['dashboard','Dashboard'],['anual','Año'],['movs','Movimientos'],['ajustes','Objetivos y ajustes']];
+    else tabs = [['resumen','Resumen'],['dashboard','Dashboard'],['anual','Año'],['ajustes','Objetivos y<br>ajustes']];
     if(desktop){
       const brand = document.createElement('div'); brand.className = 'side-brand';
       brand.innerHTML = `<img src="${LOGO_URL()}" alt=""><b>Cuentas</b>`;
@@ -1130,7 +1166,13 @@
       b.innerHTML = desktop ? label.replace('<br>',' ') : label;
       b.onclick = ()=>{ activeTab=key; render(); };
       $tabbar.appendChild(b);
+      if(!desktop && key==='dashboard'){ const sp=document.createElement('div'); sp.className='tab-spacer'; $tabbar.appendChild(sp); }
     });
+    if(!desktop){
+      const f=document.createElement('button'); f.className='fab-add'+(activeTab==='insertar'?' active':''); f.textContent='+'; f.setAttribute('aria-label','Insertar movimiento');
+      f.onclick=()=>{ activeTab='insertar'; render(); };
+      $tabbarWrap.appendChild(f);
+    }
     if(desktop){
       const foot = document.createElement('div'); foot.className = 'side-foot';
       foot.innerHTML = (me ? '@'+me.username+'<br>' : '') + 'v'+APP_VERSION;
@@ -1333,14 +1375,19 @@
         <div class="t-lbl">Patrimonio total</div>
         <div class="t-val ${totalGeneral<0?'neg':''} ${privacyMode?'masked-val':''}">${privacyMode ? MASK : euro(totalGeneral)}</div>
       </div>
+      <div class="res-cols"><div>
       <div class="group-head"><span class="g-lbl">Cuentas corrientes</span><span class="g-val">${euro(totalCorriente)}</span></div>
       <div class="acc-grid">${corrientes.map(a=>accCellHtml(a,false)).join('')}</div>
+      </div><div>
       <div class="group-head"><span class="g-lbl">Ahorro</span><span class="g-val ${privacyMode?'masked-val':''}">${privacyMode ? MASK : euro(totalAhorro)}</span></div>
       <div class="acc-grid">${ahorros.map(a=>accCellHtml(a,privacyMode)).join('')}</div>
+      </div></div>
       <div style="height:8px;"></div>
+      <div class="res-charts">
       ${buildCategoryGroupChart(nominaHistoric)}
       ${buildSavingsEvolutionChart(nominaForecast)}
       ${buildIncomeCategoryChart(nominaHistoric)}
+      </div>
     `;
 
     document.getElementById('privacyToggle').onclick = ()=>{
@@ -1413,7 +1460,8 @@
     function draw(){
       $app.innerHTML = `
         ${headerHtml('Nuevo movimiento')}
-        <div class="cell">
+        <div class="ins-layout"><div>
+        <div class="cell ins-form">
           <div class="seg" id="typeSeg">
             <button data-t="Gasto" class="${type==='Gasto'?'active':''}">Gasto</button>
             <button data-t="Ingreso" class="${type==='Ingreso'?'active':''}">Ingreso</button>
@@ -1444,9 +1492,10 @@
             <span>Gasto extraordinario</span>
           </label>` : ''}
           <button class="btn-primary" id="txSave">Añadir</button>
-        </div>
-        <div class="hist-title">Historial reciente</div>
-        ${historyHtml()}
+          <div class="kbd-hint">Pulsa Intro para añadir · Tab para pasar al siguiente campo</div>
+        </div></div>
+        <div class="ins-hist"><div class="hist-title">Historial reciente</div>
+        ${historyHtml()}</div></div>
       `;
       bind();
     }
@@ -1481,6 +1530,10 @@
       bindAccountSelect('tx-toaccount', true);
       const amountEl = document.getElementById('tx-amount');
       if(amountEl) amountEl.oninput = (e)=>{ amount = e.target.value; };
+      $app.querySelectorAll('.ins-form input:not([type=checkbox]),.ins-form select').forEach(el=>{
+        el.onkeydown = (e)=>{ if(e.key==='Enter'){ e.preventDefault(); document.getElementById('txSave').click(); } };
+      });
+      if(window.innerWidth>=1000 && amountEl && !amountEl.value) amountEl.focus();
 
       document.querySelectorAll('#catChips .chip[data-cat]').forEach(chip=>{
         chip.onclick = ()=>{
@@ -2206,7 +2259,7 @@
     const planMonths = Array.from(new Set([...contiguous, ...txMonths, ...Object.keys(state.monthlyPlans)])).sort();
     const previsionMonths = forecastMonths();
 
-    let html = headerHtml('Objetivos y ajustes');
+    let html = headerHtml('Objetivos y ajustes') + '<div class="set-cols">';
 
     html += collapsibleCard('sync', 'Mi cuenta', `
         <div class="exp-row" style="border-top:none;padding-top:0;">
@@ -2383,6 +2436,7 @@
       <div class="empty-note" style="padding:8px 0 0;">Descarga un .xlsx con "Movimientos" y "Resumen mensual", y abre un borrador de correo con el destinatario puesto — el archivo hay que adjuntarlo a mano, esta app no puede enviarlo sola.</div>
     `);
 
+    html += '</div>';
     $app.innerHTML = html;
 
     const syncNowBtn = document.getElementById('syncNowBtn');
@@ -2832,9 +2886,10 @@
       if(k.slice(0,4)!==String(year)) return;
       const m = parseInt(k.slice(5,7),10)-1;
       if(t.type==='Ingreso') months[m].ing += t.amount;
-      else { months[m].gas += t.amount; if(t.extraordinary) months[m].extra += t.amount; cats[t.category] = (cats[t.category]||0)+t.amount; }
+      else { months[m].gas += t.amount; if(t.extraordinary) months[m].extra += t.amount; (cats[t.category] = cats[t.category] || Array(12).fill(0))[m] += t.amount; }
     });
-    return { months, cats, ing: months.reduce((s,m)=>s+m.ing,0), gas: months.reduce((s,m)=>s+m.gas,0) };
+    const rng = (k,to)=> months.slice(0,to+1).reduce((s,m)=>s+m[k],0);
+    return { months, cats, ing: months.reduce((s,m)=>s+m.ing,0), gas: months.reduce((s,m)=>s+m.gas,0), rIng: to=>rng('ing',to), rGas: to=>rng('gas',to), catTotal: c=>(cats[c]||[]).reduce((a,b)=>a+b,0), catRange: (c,to)=>(cats[c]||[]).slice(0,to+1).reduce((a,b)=>a+b,0) };
   }
   function anualEndDate(year, mi){
     if(anualMode==='nomina'){
@@ -2854,31 +2909,38 @@
     const isCurYear = String(Y)===curKey.slice(0,4);
     const monthsElapsed = isCurYear ? parseInt(curKey.slice(5,7),10) : (Y < parseInt(curKey.slice(0,4),10) ? 12 : 0);
     const lastIdx = monthsElapsed-1;
+    const firstIdx = st.months.findIndex(m=>m.ing>0||m.gas>0);
+    const monthsCounted = firstIdx<0 ? 0 : Math.max(1, Math.max(lastIdx, st.months.reduce((l,m,i)=>(m.ing>0||m.gas>0)?i:l,-1)) - firstIdx + 1);
     const net = st.ing - st.gas;
-    const rate = st.ing>0 ? (net/st.ing)*100 : 0;
-    const avgGas = monthsElapsed>0 ? st.gas/monthsElapsed : 0;
+    
+    const avgGas0 = 0;
+    const avgGas = monthsCounted>0 ? st.gas/monthsCounted : 0;
+    const cmpTo = isCurYear ? lastIdx : 11;
     const delta = (a,b,goodUp)=>{
       if(!b) return '<span class="kpi-d" style="color:var(--muted);">sin año anterior</span>';
       const d = ((a-b)/Math.abs(b))*100;
       const good = goodUp ? d>=0 : d<=0;
-      return `<span class="kpi-d" style="color:${good?'var(--green)':'var(--red)'};">${d>=0?'▲':'▼'} ${Math.abs(d).toFixed(0)}% vs ${Y-1}</span>`;
+      return `<span class="kpi-d" style="color:${good?'var(--green)':'var(--red)'};">${d>=0?'▲':'▼'} ${Math.abs(d).toFixed(0)}% vs ${Y-1}${isCurYear?' (mismos meses)':''}</span>`;
     };
-    // acumulados y saldo mes a mes
-    let acc = 0;
+    // "ahorrado" = cuánto ha cambiado el saldo de tus cuentas de ahorro (las que se calculan solas) mes a mes
+    const todayS = todayStr();
+    const savAt = cut => state.accounts.filter(a=>a.type==='ahorro' && !a.manual).reduce((s,a)=>s+ledgerBalanceAsOfDate(a.id,cut),0);
+    const capCut = d => d>todayS ? todayS : d;
+    let prevS = savAt(capCut(anualEndDate(Y-1,11)));
+    let cumNet = 0;
+    const savStart = prevS;
     const rows = st.months.map((m,i)=>{
-      const has = i<=lastIdx || m.ing>0 || m.gas>0;
-      const n = m.ing - m.gas;
-      if(has) acc += n;
-      let saldo = null;
-      if(i<=lastIdx || Y<parseInt(curKey.slice(0,4),10)){
-        const cut = anualEndDate(Y,i);
-        saldo = state.accounts.filter(a=>!a.manual).reduce((s,a)=>s+ledgerBalanceAsOfDate(a.id,cut),0);
-      }
-      return { i, ing:m.ing, gas:m.gas, net:n, acc: has?acc:null, saldo, has };
+      const has = firstIdx>=0 && i>=firstIdx && (i<=lastIdx || m.ing>0 || m.gas>0);
+      let sav = null, ahorrado = null;
+      if(has){ sav = savAt(capCut(anualEndDate(Y,i))); ahorrado = sav - prevS; prevS = sav; }
+      if(has) cumNet += m.ing - m.gas;
+      return { i, ing:m.ing, gas:m.gas, net:m.ing-m.gas, sav, ahorrado, has, cn: has ? cumNet : null };
     });
-    const withData = rows.filter(r=>r.has && (r.ing>0||r.gas>0));
-    const best = withData.length ? withData.reduce((a,b)=>b.net>a.net?b:a) : null;
-    const worst = withData.length ? withData.reduce((a,b)=>b.net<a.net?b:a) : null;
+    const ahorroTot = rows.reduce((t,r)=>t+(r.ahorrado||0),0);
+    const savEnd = rows.reduce((l,r)=>r.sav!=null?r.sav:l, savStart);
+    const withData = rows.filter(r=>r.has && (r.ing>0||r.gas>0||(r.ahorrado||0)!==0));
+    const best = withData.length ? withData.reduce((a,b)=>b.ahorrado>a.ahorrado?b:a) : null;
+    const worst = withData.length ? withData.reduce((a,b)=>b.ahorrado<a.ahorrado?b:a) : null;
 
     // gráficos SVG: (1) barras ingresos/gastos, (2) línea de ahorro acumulado
     const W=600,PL=44,PR=10,PT=14,PB=26;
@@ -2892,39 +2954,74 @@
       for(let v=bot; v<=top+1e-9; v+=step){
         g += `<line x1="${PL}" x2="${W-PR}" y1="${yOf(v)}" y2="${yOf(v)}" stroke="var(--line)" stroke-width="1"/><text x="${PL-6}" y="${yOf(v)+3}" text-anchor="end" font-size="9" fill="var(--muted)">${Math.abs(v)>=1000?(v/1000).toFixed(v%1000?1:0)+'k':Math.round(v)}</text>`;
       }
-      g += `<line x1="${PL}" x2="${W-PR}" y1="${yOf(0)}" y2="${yOf(0)}" stroke="var(--muted)" stroke-width="1"/>`;
+      if(bot<=0 && top>=0) g += `<line x1="${PL}" x2="${W-PR}" y1="${yOf(0)}" y2="${yOf(0)}" stroke="var(--muted)" stroke-width="1"/>`;
       rows.forEach(r=>{ g += `<text x="${PL+r.i*cw+cw/2}" y="${H-8}" text-anchor="middle" font-size="9.5" fill="var(--ink-soft)">${MES3[r.i]}</text>`; });
-      return { yOf, g };
+      return { yOf, g, bot, top };
     }
-    const H1=210;
-    const maxBar = Math.max(1, ...rows.map(r=>Math.max(r.ing,r.gas)));
-    const f1 = frame(H1, 0, maxBar);
-    let svg = `<svg viewBox="0 0 ${W} ${H1}" class="anual-svg" role="img" aria-label="Ingresos y gastos por mes">${f1.g}`;
-    rows.forEach(r=>{
-      const x0 = PL + r.i*cw, bw = cw*0.34;
-      svg += `<g><title>${MES3[r.i]} ${Y}: ingresos ${fmt(r.ing)}€ · gastos ${fmt(r.gas)}€ · neto ${fmt(r.net)}€</title>`;
-      if(r.ing>0) svg += `<rect x="${x0+cw*0.13}" y="${f1.yOf(r.ing)}" width="${bw}" height="${f1.yOf(0)-f1.yOf(r.ing)}" rx="2" fill="var(--green)" opacity="0.9"/>`;
-      if(r.gas>0) svg += `<rect x="${x0+cw*0.13+bw+2}" y="${f1.yOf(r.gas)}" width="${bw}" height="${f1.yOf(0)-f1.yOf(r.gas)}" rx="2" fill="var(--red)" opacity="0.9"/>`;
-      svg += `<rect x="${x0}" y="${PT}" width="${cw}" height="${H1-PT-PB}" fill="transparent"/></g>`;
+    // (1) análisis: cada mes, lo ingresado frente a lo gastado
+    const visRows = rows.filter(r=>r.has);
+    const maxM = Math.max(1, ...visRows.map(r=>Math.max(r.ing,r.gas)));
+    const anaHtml = visRows.map(r=>{
+      const over = r.gas>r.ing, pct = r.ing>0 ? Math.round(r.gas/r.ing*100) : null;
+      return `<div class="ana-row"><div class="ana-m">${MES3[r.i]}</div>
+        <div class="ana-bars">
+          <div class="ana-bar"><span class="trk"><i style="width:${(r.ing/maxM*100).toFixed(1)}%;background:var(--green);"></i></span><b>${fmtWhole(r.ing)}€</b></div>
+          <div class="ana-bar"><span class="trk"><i style="width:${(r.gas/maxM*100).toFixed(1)}%;background:${over?'var(--red)':'var(--red-mid)'};"></i></span><b>${fmtWhole(r.gas)}€</b></div>
+        </div>
+        <div class="ana-net" style="color:${over?'var(--red)':'var(--green)'};">${over?'−':'+'}${fmtWhole(Math.abs(r.net))}€<small>${pct==null?'sin ingresos':'gastaste el '+pct+'%'}</small></div></div>`;
+    }).join('');
+    // (2) acumulado de ingresos − gastos
+    const cnVals = visRows.map(r=>r.cn);
+    const H3=190;
+    const cMin = Math.min(0, ...(cnVals.length?cnVals:[0])), cMax = Math.max(0, ...(cnVals.length?cnVals:[0]));
+    const f3 = frame(H3, cMin===cMax ? -1 : cMin, cMax===cMin ? 1 : cMax);
+    const pts3 = visRows.map(r=>[PL+r.i*cw+cw/2, f3.yOf(r.cn), r]);
+    let svg3 = `<svg viewBox="0 0 ${W} ${H3}" class="anual-svg" role="img" aria-label="Ingresos menos gastos acumulado">${f3.g}`;
+    if(f3.bot<=0 && f3.top>=0) svg3 += `<line x1="${PL}" x2="${W-PR}" y1="${f3.yOf(0)}" y2="${f3.yOf(0)}" stroke="var(--ink-soft)" stroke-width="1.5" stroke-dasharray="4 3"/>`;
+    if(pts3.length>1) svg3 += `<polyline points="${pts3.map(q=>q[0].toFixed(1)+','+q[1].toFixed(1)).join(' ')}" fill="none" stroke="var(--cat-violet)" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>`;
+    pts3.forEach(q=>{ svg3 += `<circle cx="${q[0]}" cy="${q[1]}" r="4" fill="${q[2].cn>=0?'var(--green)':'var(--red)'}" stroke="var(--cell)" stroke-width="1.5"><title>${MES3[q[2].i]}: ese mes ${euro(q[2].net)} · acumulado ${euro(q[2].cn)}</title></circle>`; });
+    svg3 += `</svg>`;
+    const cnLast = visRows.length ? visRows[visRows.length-1].cn : 0;
+    const cnNote = visRows.length ? (cnLast<0 ? `Llevas <b style="color:var(--red);">${euro(cnLast)}</b> en lo que va de año: aún te faltan ${fmt(Math.abs(cnLast))}€ para compensar. Si la línea sube, estás recuperando.` : `Llevas <b style="color:var(--green);">+${fmt(cnLast)}€</b> de ventaja: has ingresado más de lo que has gastado.`) : '';
+    // (2b) lo que sobra cada mes (ingresos − gastos), partiendo de 0
+    const H4=190;
+    const nMin=Math.min(0,...visRows.map(r=>r.net)), nMax=Math.max(0,...visRows.map(r=>r.net));
+    const f4=frame(H4, nMin===nMax?-1:nMin, nMax===nMin?1:nMax);
+    let svg4=`<svg viewBox="0 0 ${W} ${H4}" class="anual-svg" role="img" aria-label="Lo que te sobra cada mes">${f4.g}`;
+    svg4+=`<line x1="${PL}" x2="${W-PR}" y1="${f4.yOf(0)}" y2="${f4.yOf(0)}" stroke="var(--ink-soft)" stroke-width="1.5"/>`;
+    visRows.forEach(r=>{
+      const x=PL+r.i*cw+cw*0.2, w=cw*0.6, y0=f4.yOf(0), y1=f4.yOf(r.net);
+      const pos=r.net>=0, top=Math.min(y0,y1), h=Math.max(2,Math.abs(y1-y0));
+      svg4+=`<rect x="${x}" y="${top}" width="${w}" height="${h}" rx="3" fill="${pos?'var(--green)':'var(--red)'}"><title>${MES3[r.i]}: ${euro(r.net)}</title></rect>`;
+      svg4+=`<text x="${x+w/2}" y="${pos?top-4:top+h+11}" text-anchor="middle" font-size="9" font-weight="700" fill="${pos?'var(--green)':'var(--red)'}">${r.net<0?'−':''}${fmtWhole(Math.abs(r.net))}</text>`;
     });
-    svg += `</svg>`;
-    const accVals = rows.filter(r=>r.acc!=null).map(r=>r.acc);
+    svg4+=`</svg>`;
+    const avgNet = visRows.length ? visRows.reduce((a,r)=>a+r.net,0)/visRows.length : 0;
+    let sobraNote='';
+    if(visRows.length){
+      const l=visRows[visRows.length-1], pr=visRows.length>1?visRows[visRows.length-2]:null;
+      sobraNote = `De media te sobran <b>${euro(avgNet)}</b> al mes.` + (pr ? ` ${MES3[l.i]}: ${euro(l.net)}, ${l.net>=pr.net?'<b style="color:var(--green);">'+fmt(l.net-pr.net)+'€ más</b>':'<b style="color:var(--red);">'+fmt(pr.net-l.net)+'€ menos</b>'} que en ${MES3[pr.i]}.` : '');
+    }
+    // (3) saldo de las cuentas de ahorro
+    const savVals = rows.filter(r=>r.sav!=null).map(r=>r.sav);
     const H2=170;
-    const f2 = frame(H2, Math.min(0,...accVals,0), Math.max(1,...accVals));
-    const pts = rows.filter(r=>r.acc!=null).map(r=>[PL+r.i*cw+cw/2, f2.yOf(r.acc)]);
-    let svg2 = `<svg viewBox="0 0 ${W} ${H2}" class="anual-svg" role="img" aria-label="Ahorro acumulado">${f2.g}`;
+    const lo = savVals.length ? Math.min(...savVals) : 0, hi = savVals.length ? Math.max(...savVals) : 1;
+    const padv = Math.max(1, (hi-lo)*0.15);
+    const f2 = frame(H2, lo>=0 ? Math.max(0, lo-padv) : lo-padv, hi+padv);
+    const pts = rows.filter(r=>r.sav!=null).map(r=>[PL+r.i*cw+cw/2, f2.yOf(r.sav)]);
+    let svg2 = `<svg viewBox="0 0 ${W} ${H2}" class="anual-svg" role="img" aria-label="Saldo en cuentas de ahorro">${f2.g}`;
     if(pts.length>1){
-      svg2 += `<polygon points="${pts[0][0]},${f2.yOf(0)} ${pts.map(q=>q[0].toFixed(1)+','+q[1].toFixed(1)).join(' ')} ${pts[pts.length-1][0]},${f2.yOf(0)}" fill="var(--cat-violet)" opacity="0.12"/>`;
+      svg2 += `<polygon points="${pts[0][0]},${f2.yOf(f2.bot)} ${pts.map(q=>q[0].toFixed(1)+','+q[1].toFixed(1)).join(' ')} ${pts[pts.length-1][0]},${f2.yOf(f2.bot)}" fill="var(--cat-violet)" opacity="0.12"/>`;
       svg2 += `<polyline points="${pts.map(q=>q[0].toFixed(1)+','+q[1].toFixed(1)).join(' ')}" fill="none" stroke="var(--cat-violet)" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>`;
     }
-    rows.filter(r=>r.acc!=null).forEach(r=>{ svg2 += `<circle cx="${PL+r.i*cw+cw/2}" cy="${f2.yOf(r.acc)}" r="3" fill="var(--cat-violet)"><title>Ahorro acumulado hasta ${MES3[r.i]}: ${fmt(r.acc)}€</title></circle>`; });
+    rows.filter(r=>r.sav!=null).forEach(r=>{ svg2 += `<circle cx="${PL+r.i*cw+cw/2}" cy="${f2.yOf(r.sav)}" r="3" fill="var(--cat-violet)"><title>Saldo de ahorro a final de ${MES3[r.i]}: ${fmt(r.sav)}€ (${r.ahorrado>=0?'+':''}${fmt(r.ahorrado)}€ ese mes)</title></circle>`; });
     svg2 += `</svg>`;
 
-    const catEntries = Object.entries(st.cats).sort((a,b)=>b[1]-a[1]);
+    const catEntries = Object.keys(st.cats).map(c=>[c,st.catTotal(c)]).sort((a,b)=>b[1]-a[1]);
     const maxCat = Math.max(1, ...catEntries.map(e=>e[1]));
     const catHtml = catEntries.length ? catEntries.map(([c,v])=>{
-      const pv = prev.cats[c]||0;
-      const d = pv ? ` <span style="color:${v<=pv?'var(--green)':'var(--red)'};font-size:10.5px;font-weight:700;">${v>=pv?'▲':'▼'}${Math.abs(((v-pv)/pv)*100).toFixed(0)}%</span>` : '';
+      const pv = prev.catRange(c, cmpTo), vc = st.catRange(c, cmpTo);
+      const d = pv ? ` <span style="color:${vc<=pv?'var(--green)':'var(--red)'};font-size:10.5px;font-weight:700;">${vc>=pv?'▲':'▼'}${Math.abs(((vc-pv)/pv)*100).toFixed(0)}%</span>` : '';
       return `<div style="margin-bottom:10px;">
         <div style="display:flex;justify-content:space-between;font-size:12.5px;font-weight:600;margin-bottom:3px;"><span>${c}</span><span class="mono">${fmt(v)}€${d}</span></div>
         <div style="height:8px;border-radius:4px;background:var(--bg);"><div style="height:8px;border-radius:4px;width:${(v/maxCat*100).toFixed(1)}%;background:var(--red-mid);"></div></div>
@@ -2936,38 +3033,46 @@
       <div class="filter-chip-row"><div class="fchip ${anualMode==='natural'?'active':''}" data-m="natural">Año natural</div><div class="fchip ${anualMode==='nomina'?'active':''}" data-m="nomina">Por nómina</div></div>
     </div>`;
     html += `<div class="anual-kpis">
-      <div class="cell kpi"><div class="kpi-l">Ingresos</div><div class="kpi-v mono" style="color:var(--green);">${fmt(st.ing)}€</div>${delta(st.ing,prev.ing,true)}</div>
-      <div class="cell kpi"><div class="kpi-l">Gastos</div><div class="kpi-v mono" style="color:var(--red);">${fmt(st.gas)}€</div>${delta(st.gas,prev.gas,false)}</div>
-      <div class="cell kpi"><div class="kpi-l">Ahorro del año</div><div class="kpi-v mono" style="color:${net>=0?'var(--green)':'var(--red)'};">${euro(net)}</div><span class="kpi-d" style="color:var(--muted);">${rate.toFixed(0)}% de lo ingresado</span></div>
-      <div class="cell kpi"><div class="kpi-l">Gasto medio / mes</div><div class="kpi-v mono">${fmt(avgGas)}€</div><span class="kpi-d" style="color:var(--muted);">${monthsElapsed} ${monthsElapsed===1?'mes':'meses'} contados</span></div>
+      <div class="cell kpi"><div class="kpi-l">Ingresos</div><div class="kpi-v mono" style="color:var(--green);">${fmt(st.ing)}€</div>${delta(st.rIng(cmpTo),prev.rIng(cmpTo),true)}</div>
+      <div class="cell kpi"><div class="kpi-l">Gastos</div><div class="kpi-v mono" style="color:var(--red);">${fmt(st.gas)}€</div>${delta(st.rGas(cmpTo),prev.rGas(cmpTo),false)}</div>
+      <div class="cell kpi"><div class="kpi-l">Ahorrado en el año</div><div class="kpi-v mono" style="color:${ahorroTot>=0?'var(--green)':'var(--red)'};">${euro(ahorroTot)}</div><span class="kpi-d" style="color:var(--muted);">${st.ing>0?((ahorroTot/st.ing)*100).toFixed(0)+'% de lo ingresado · ':''}ingresos − gastos: ${euro(net)}</span></div>
+      <div class="cell kpi"><div class="kpi-l">Gasto medio / mes</div><div class="kpi-v mono">${fmt(avgGas)}€</div><span class="kpi-d" style="color:var(--muted);">${monthsCounted} ${monthsCounted===1?'mes':'meses'} con datos</span></div>
     </div>`;
     html += `<div class="anual-grid">
       <div class="chart-wrap">
-        <div class="chart-title">Mes a mes <span style="font-weight:400;text-transform:none;letter-spacing:0;">— <span style="color:var(--green);">■</span> ingresos <span style="color:var(--red);">■</span> gastos</span></div>
-        ${withData.length ? svg : '<div class="day-chart-empty">Todavía no hay movimientos en este año.</div>'}
+        <div class="chart-title">Cada mes: lo que ingresaste y lo que gastaste <span style="font-weight:400;text-transform:none;letter-spacing:0;">— <span style="color:var(--green);">■</span> ingresos <span style="color:var(--red);">■</span> gastos</span></div>
+        ${visRows.length ? `<div class="ana-list">${anaHtml}</div>` : '<div class="day-chart-empty">Todavía no hay movimientos en este año.</div>'}
       </div>
       <div class="chart-wrap">
-        <div class="chart-title">Ahorro acumulado <span style="font-weight:400;text-transform:none;letter-spacing:0;">(ingresos − gastos, desde enero)</span></div>
+        <div class="chart-title">Lo que te sobra cada mes <span style="font-weight:400;text-transform:none;letter-spacing:0;">(ingresos − gastos · verde: sobra, rojo: te pasas)</span></div>
+        ${visRows.length ? svg4 + `<div class="ana-note">${sobraNote}</div>` : '<div class="day-chart-empty">Todavía no hay movimientos en este año.</div>'}
+      </div>
+      <div class="chart-wrap">
+        <div class="chart-title">¿Estás recuperando? Ingresos − gastos acumulado <span style="font-weight:400;text-transform:none;letter-spacing:0;">(la línea punteada es el 0)</span></div>
+        ${visRows.length ? svg3 + `<div class="ana-note">${cnNote}</div>` : '<div class="day-chart-empty">Todavía no hay movimientos en este año.</div>'}
+      </div>
+      <div class="chart-wrap">
+        <div class="chart-title">Saldo de tus cuentas de ahorro <span style="font-weight:400;text-transform:none;letter-spacing:0;">(a final de cada mes)</span></div>
         ${withData.length ? svg2 : '<div class="day-chart-empty">Todavía no hay movimientos en este año.</div>'}
       </div>
       <div class="cell">
+        <div class="section-title" style="margin-bottom:10px;">Meses destacados</div>
+        ${best ? `<div class="exp-row" style="border-top:none;padding-top:0;"><div class="exp-name">Mes que más ahorraste</div><div class="mono" style="font-weight:700;color:${best.ahorrado>=0?'var(--green)':'var(--red)'};">${MES3[best.i]} · ${euro(best.ahorrado)}</div></div>
+        <div class="exp-row"><div class="exp-name">Mes que menos ahorraste</div><div class="mono" style="font-weight:700;color:${worst.ahorrado<0?'var(--red)':'var(--ink)'};">${MES3[worst.i]} · ${euro(worst.ahorrado)}</div></div>
+        <div class="exp-row"><div class="exp-name">Mayor gasto en un mes</div><div class="mono" style="font-weight:700;">${(()=>{ const g=withData.reduce((a,b)=>b.gas>a.gas?b:a); return MES3[g.i]+' · '+fmt(g.gas)+'€'; })()}</div></div>` : '<div class="empty-note">Sin datos todavía.</div>'}
+      </div>
+      <div class="cell anual-wide">
         <div class="section-title" style="margin-bottom:10px;">Gasto por categoría</div>
         ${catHtml}
-      </div>
-      <div class="cell">
-        <div class="section-title" style="margin-bottom:10px;">Meses destacados</div>
-        ${best ? `<div class="exp-row" style="border-top:none;padding-top:0;"><div class="exp-name">Mejor mes de ahorro</div><div class="mono" style="font-weight:700;color:var(--green);">${MES3[best.i]} · ${euro(best.net)}</div></div>
-        <div class="exp-row"><div class="exp-name">Peor mes</div><div class="mono" style="font-weight:700;color:${worst.net<0?'var(--red)':'var(--ink)'};">${MES3[worst.i]} · ${euro(worst.net)}</div></div>
-        <div class="exp-row"><div class="exp-name">Mayor gasto en un mes</div><div class="mono" style="font-weight:700;">${(()=>{ const g=withData.reduce((a,b)=>b.gas>a.gas?b:a); return MES3[g.i]+' · '+fmt(g.gas)+'€'; })()}</div></div>` : '<div class="empty-note">Sin datos todavía.</div>'}
       </div>
       <div class="cell anual-wide">
         <div class="section-title" style="margin-bottom:10px;">Acumulados</div>
         <div class="pivot-wrap"><table class="pivot">
-          <thead><tr><th>Mes</th><th>Ingresos</th><th>Gastos</th><th>Neto</th><th>Ahorro acum.</th><th>Saldo cuentas</th></tr></thead>
-          <tbody>${rows.map(r=>`<tr><td>${MES3[r.i]}</td><td>${r.ing?fmt(r.ing):'—'}</td><td>${r.gas?fmt(r.gas):'—'}</td><td style="color:${r.net>0?'var(--green)':(r.net<0?'var(--red)':'inherit')};">${(r.ing||r.gas)?fmt(r.net):'—'}</td><td>${r.acc!=null?fmt(r.acc):'—'}</td><td>${r.saldo!=null?fmt(r.saldo):'—'}</td></tr>`).join('')}
-          <tr style="font-weight:800;"><td>Total</td><td>${fmt(st.ing)}</td><td>${fmt(st.gas)}</td><td>${fmt(net)}</td><td></td><td></td></tr></tbody>
+          <thead><tr><th>Mes</th><th>Ingresos</th><th>Gastos</th><th>Ing. − gastos</th><th>Ahorrado</th><th>Saldo ahorro</th></tr></thead>
+          <tbody>${rows.map(r=>`<tr><td>${MES3[r.i]}</td><td>${r.ing?fmt(r.ing):'—'}</td><td>${r.gas?fmt(r.gas):'—'}</td><td style="color:${r.net>0?'var(--green)':(r.net<0?'var(--red)':'inherit')};">${(r.ing||r.gas)?fmt(r.net):'—'}</td><td style="font-weight:700;color:${(r.ahorrado||0)>0?'var(--green)':((r.ahorrado||0)<0?'var(--red)':'inherit')};">${r.ahorrado!=null?fmt(r.ahorrado):'—'}</td><td>${r.sav!=null?fmt(r.sav):'—'}</td></tr>`).join('')}
+          <tr style="font-weight:800;"><td>Total</td><td>${fmt(st.ing)}</td><td>${fmt(st.gas)}</td><td>${fmt(net)}</td><td>${fmt(ahorroTot)}</td><td>${fmt(savEnd)}</td></tr></tbody>
         </table></div>
-        <div class="empty-note" style="padding:8px 0 0;text-align:left;">«Saldo cuentas» suma las cuentas que se calculan solas (las manuales, como inversiones, no entran). Los movimientos entre cuentas no cuentan como gasto ni ingreso.</div>
+        <div class="empty-note" style="padding:8px 0 0;text-align:left;">«Ahorrado» es lo que ha cambiado el saldo de tus cuentas de ahorro ese mes (por ejemplo, lo que pasas a la Cuenta Remunerada). Las cuentas manuales, como inversiones, no entran. «Ing. − gastos» es solo ingresos menos gastos.</div>
       </div>
     </div>`;
     html += `<button class="btn-ghost" id="anMovs" style="margin:12px 0 4px;">Buscar y filtrar todos los movimientos →</button>`;
@@ -3713,6 +3818,7 @@
     if(!state.onboarded){ renderOnboarding(); return; }
     $tabbarWrap.style.display = 'flex'; document.body.classList.remove('nosidebar');
     document.body.classList.toggle('wide', activeTab==='anual' || activeTab==='dashboard' || activeTab==='movs');
+    document.body.className = document.body.className.replace(/\btab-\w+/g,'').trim(); document.body.classList.add('tab-'+activeTab);
     renderTabbar();
     if(activeTab==='resumen') renderResumen();
     else if(activeTab==='insertar') renderInsertar();
