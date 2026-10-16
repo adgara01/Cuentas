@@ -479,6 +479,27 @@
     border:1.5px solid var(--line);border-radius:10px;background:var(--bg);padding:7px 9px;color:var(--ink);
   }
 
+  /* ---------- año + modo ordenador ---------- */
+  .anual-ctrl{display:flex;flex-direction:column;gap:10px;align-items:center;}
+  .anual-year{display:flex;align-items:center;gap:14px;}
+  .anual-year .btn-ghost{width:44px;padding:8px 0;margin:0;}
+  .anual-year-n{font-size:26px;font-weight:800;min-width:90px;text-align:center;letter-spacing:-0.4px;}
+  .anual-kpis{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;}
+  .anual-kpis .cell{margin-bottom:0;}
+  .kpi-l{font-size:10.5px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:700;}
+  .kpi-v{font-size:21px;font-weight:800;margin:4px 0 2px;letter-spacing:-0.4px;}
+  .kpi-d{font-size:11px;font-weight:700;}
+  .anual-grid{display:grid;grid-template-columns:1fr;gap:10px;}
+  .anual-grid>*{margin-bottom:0;}
+  .anual-svg{width:100%;height:auto;display:block;}
+  @media (min-width:1000px){
+    body.wide #app{max-width:1100px;}
+    body.wide .tabbar-inner{max-width:620px;}
+    .anual-kpis{grid-template-columns:repeat(4,1fr);}
+    .anual-grid{grid-template-columns:1fr 1fr;}
+    .anual-grid .anual-wide{grid-column:1 / -1;}
+    .anual-ctrl{flex-direction:row;justify-content:space-between;}
+  }
   /* ---------- login ---------- */
   .auth-wrap{max-width:400px;margin:0 auto;padding:max(36px,env(safe-area-inset-top)) 18px 40px;text-align:center;}
   .auth-logo{width:84px;height:84px;border-radius:20px;box-shadow:var(--shadow);display:block;margin:0 auto 12px;}
@@ -1033,7 +1054,7 @@
   // ================= TABS =================
   function renderTabbar(){
     $tabbar.innerHTML = '';
-    [['resumen','Resumen'],['insertar','Insertar<br>movimiento'],['dashboard','Dashboard'],['ajustes','Objetivos y<br>ajustes']].forEach(([key,label])=>{
+    [['resumen','Resumen'],['insertar','Insertar<br>movimiento'],['dashboard','Dashboard'],['anual','Año'],['ajustes','Objetivos y<br>ajustes']].forEach(([key,label])=>{
       const b = document.createElement('button');
       b.className = 'tab-btn' + (activeTab===key?' active':'');
       b.innerHTML = label;
@@ -2719,6 +2740,163 @@
   }
   $overlay.onclick = (e)=>{ if(e.target===$overlay) $overlay.classList.remove('show'); };
 
+  // ================= AÑO (dashboard anual) =================
+  let anualYear = null, anualMode = 'natural';
+  const MES3 = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  function anualKey(dateStr){ return anualMode==='nomina' ? nominaPeriodLabelForDate(dateStr) : monthKey(dateStr); }
+  function anualStats(year){
+    const months = Array.from({length:12}, ()=>({ing:0,gas:0,extra:0}));
+    const cats = {};
+    state.transactions.forEach(t=>{
+      if(t.type==='Movimiento') return;
+      const k = anualKey(t.date);
+      if(k.slice(0,4)!==String(year)) return;
+      const m = parseInt(k.slice(5,7),10)-1;
+      if(t.type==='Ingreso') months[m].ing += t.amount;
+      else { months[m].gas += t.amount; if(t.extraordinary) months[m].extra += t.amount; cats[t.category] = (cats[t.category]||0)+t.amount; }
+    });
+    return { months, cats, ing: months.reduce((s,m)=>s+m.ing,0), gas: months.reduce((s,m)=>s+m.gas,0) };
+  }
+  function anualEndDate(year, mi){
+    if(anualMode==='nomina'){
+      const lbl = year+'-'+String(mi+1).padStart(2,'0');
+      return nominaPeriodForLabelMonth(lbl, state.paydayDay||1).end;
+    }
+    return isoDate(new Date(year, mi+1, 0));
+  }
+  function renderAnual(){
+    const curKey = anualMode==='nomina' ? nominaCurrentLabelMonth() : todayMonthKey();
+    const years = new Set(state.transactions.filter(t=>t.type!=='Movimiento').map(t=>anualKey(t.date).slice(0,4)));
+    years.add(curKey.slice(0,4));
+    const yearList = Array.from(years).sort();
+    if(!anualYear || !yearList.includes(String(anualYear))) anualYear = parseInt(curKey.slice(0,4),10);
+    const Y = anualYear;
+    const st = anualStats(Y), prev = anualStats(Y-1);
+    const isCurYear = String(Y)===curKey.slice(0,4);
+    const monthsElapsed = isCurYear ? parseInt(curKey.slice(5,7),10) : (Y < parseInt(curKey.slice(0,4),10) ? 12 : 0);
+    const lastIdx = monthsElapsed-1;
+    const net = st.ing - st.gas;
+    const rate = st.ing>0 ? (net/st.ing)*100 : 0;
+    const avgGas = monthsElapsed>0 ? st.gas/monthsElapsed : 0;
+    const delta = (a,b,goodUp)=>{
+      if(!b) return '<span class="kpi-d" style="color:var(--muted);">sin año anterior</span>';
+      const d = ((a-b)/Math.abs(b))*100;
+      const good = goodUp ? d>=0 : d<=0;
+      return `<span class="kpi-d" style="color:${good?'var(--green)':'var(--red)'};">${d>=0?'▲':'▼'} ${Math.abs(d).toFixed(0)}% vs ${Y-1}</span>`;
+    };
+    // acumulados y saldo mes a mes
+    let acc = 0;
+    const rows = st.months.map((m,i)=>{
+      const has = i<=lastIdx || m.ing>0 || m.gas>0;
+      const n = m.ing - m.gas;
+      if(has) acc += n;
+      let saldo = null;
+      if(i<=lastIdx || Y<parseInt(curKey.slice(0,4),10)){
+        const cut = anualEndDate(Y,i);
+        saldo = state.accounts.filter(a=>!a.manual).reduce((s,a)=>s+ledgerBalanceAsOfDate(a.id,cut),0);
+      }
+      return { i, ing:m.ing, gas:m.gas, net:n, acc: has?acc:null, saldo, has };
+    });
+    const withData = rows.filter(r=>r.has && (r.ing>0||r.gas>0));
+    const best = withData.length ? withData.reduce((a,b)=>b.net>a.net?b:a) : null;
+    const worst = withData.length ? withData.reduce((a,b)=>b.net<a.net?b:a) : null;
+
+    // gráficos SVG: (1) barras ingresos/gastos, (2) línea de ahorro acumulado
+    const W=600,PL=44,PR=10,PT=14,PB=26;
+    const cw = (W-PL-PR)/12;
+    function frame(H, minV, maxV){
+      const raw=(maxV-minV)/4; const pw=Math.pow(10,Math.floor(Math.log10(raw||1))); const f=raw/pw;
+      const step=(f<=1?1:f<=2?2:f<=5?5:10)*pw;
+      const top=Math.ceil(maxV/step)*step, bot=Math.floor(minV/step)*step;
+      const yOf = v => PT + (1-((v-bot)/((top-bot)||1)))*(H-PT-PB);
+      let g='';
+      for(let v=bot; v<=top+1e-9; v+=step){
+        g += `<line x1="${PL}" x2="${W-PR}" y1="${yOf(v)}" y2="${yOf(v)}" stroke="var(--line)" stroke-width="1"/><text x="${PL-6}" y="${yOf(v)+3}" text-anchor="end" font-size="9" fill="var(--muted)">${Math.abs(v)>=1000?(v/1000).toFixed(v%1000?1:0)+'k':Math.round(v)}</text>`;
+      }
+      g += `<line x1="${PL}" x2="${W-PR}" y1="${yOf(0)}" y2="${yOf(0)}" stroke="var(--muted)" stroke-width="1"/>`;
+      rows.forEach(r=>{ g += `<text x="${PL+r.i*cw+cw/2}" y="${H-8}" text-anchor="middle" font-size="9.5" fill="var(--ink-soft)">${MES3[r.i]}</text>`; });
+      return { yOf, g };
+    }
+    const H1=210;
+    const maxBar = Math.max(1, ...rows.map(r=>Math.max(r.ing,r.gas)));
+    const f1 = frame(H1, 0, maxBar);
+    let svg = `<svg viewBox="0 0 ${W} ${H1}" class="anual-svg" role="img" aria-label="Ingresos y gastos por mes">${f1.g}`;
+    rows.forEach(r=>{
+      const x0 = PL + r.i*cw, bw = cw*0.34;
+      svg += `<g><title>${MES3[r.i]} ${Y}: ingresos ${fmt(r.ing)}€ · gastos ${fmt(r.gas)}€ · neto ${fmt(r.net)}€</title>`;
+      if(r.ing>0) svg += `<rect x="${x0+cw*0.13}" y="${f1.yOf(r.ing)}" width="${bw}" height="${f1.yOf(0)-f1.yOf(r.ing)}" rx="2" fill="var(--green)" opacity="0.9"/>`;
+      if(r.gas>0) svg += `<rect x="${x0+cw*0.13+bw+2}" y="${f1.yOf(r.gas)}" width="${bw}" height="${f1.yOf(0)-f1.yOf(r.gas)}" rx="2" fill="var(--red)" opacity="0.9"/>`;
+      svg += `<rect x="${x0}" y="${PT}" width="${cw}" height="${H1-PT-PB}" fill="transparent"/></g>`;
+    });
+    svg += `</svg>`;
+    const accVals = rows.filter(r=>r.acc!=null).map(r=>r.acc);
+    const H2=170;
+    const f2 = frame(H2, Math.min(0,...accVals,0), Math.max(1,...accVals));
+    const pts = rows.filter(r=>r.acc!=null).map(r=>[PL+r.i*cw+cw/2, f2.yOf(r.acc)]);
+    let svg2 = `<svg viewBox="0 0 ${W} ${H2}" class="anual-svg" role="img" aria-label="Ahorro acumulado">${f2.g}`;
+    if(pts.length>1){
+      svg2 += `<polygon points="${pts[0][0]},${f2.yOf(0)} ${pts.map(q=>q[0].toFixed(1)+','+q[1].toFixed(1)).join(' ')} ${pts[pts.length-1][0]},${f2.yOf(0)}" fill="var(--cat-violet)" opacity="0.12"/>`;
+      svg2 += `<polyline points="${pts.map(q=>q[0].toFixed(1)+','+q[1].toFixed(1)).join(' ')}" fill="none" stroke="var(--cat-violet)" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>`;
+    }
+    rows.filter(r=>r.acc!=null).forEach(r=>{ svg2 += `<circle cx="${PL+r.i*cw+cw/2}" cy="${f2.yOf(r.acc)}" r="3" fill="var(--cat-violet)"><title>Ahorro acumulado hasta ${MES3[r.i]}: ${fmt(r.acc)}€</title></circle>`; });
+    svg2 += `</svg>`;
+
+    const catEntries = Object.entries(st.cats).sort((a,b)=>b[1]-a[1]);
+    const maxCat = Math.max(1, ...catEntries.map(e=>e[1]));
+    const catHtml = catEntries.length ? catEntries.map(([c,v])=>{
+      const pv = prev.cats[c]||0;
+      const d = pv ? ` <span style="color:${v<=pv?'var(--green)':'var(--red)'};font-size:10.5px;font-weight:700;">${v>=pv?'▲':'▼'}${Math.abs(((v-pv)/pv)*100).toFixed(0)}%</span>` : '';
+      return `<div style="margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;font-size:12.5px;font-weight:600;margin-bottom:3px;"><span>${c}</span><span class="mono">${fmt(v)}€${d}</span></div>
+        <div style="height:8px;border-radius:4px;background:var(--bg);"><div style="height:8px;border-radius:4px;width:${(v/maxCat*100).toFixed(1)}%;background:var(--red-mid);"></div></div>
+      </div>`; }).join('') : '<div class="empty-note">Sin gastos este año.</div>';
+
+    let html = headerHtml('Año '+Y);
+    html += `<div class="cell anual-ctrl">
+      <div class="anual-year"><button class="btn-ghost" id="anPrev" ${yearList.indexOf(String(Y))<=0?'disabled':''}>◀</button><div class="anual-year-n">${Y}</div><button class="btn-ghost" id="anNext" ${yearList.indexOf(String(Y))>=yearList.length-1?'disabled':''}>▶</button></div>
+      <div class="filter-chip-row"><div class="fchip ${anualMode==='natural'?'active':''}" data-m="natural">Año natural</div><div class="fchip ${anualMode==='nomina'?'active':''}" data-m="nomina">Por nómina</div></div>
+    </div>`;
+    html += `<div class="anual-kpis">
+      <div class="cell kpi"><div class="kpi-l">Ingresos</div><div class="kpi-v mono" style="color:var(--green);">${fmt(st.ing)}€</div>${delta(st.ing,prev.ing,true)}</div>
+      <div class="cell kpi"><div class="kpi-l">Gastos</div><div class="kpi-v mono" style="color:var(--red);">${fmt(st.gas)}€</div>${delta(st.gas,prev.gas,false)}</div>
+      <div class="cell kpi"><div class="kpi-l">Ahorro del año</div><div class="kpi-v mono" style="color:${net>=0?'var(--green)':'var(--red)'};">${euro(net)}</div><span class="kpi-d" style="color:var(--muted);">${rate.toFixed(0)}% de lo ingresado</span></div>
+      <div class="cell kpi"><div class="kpi-l">Gasto medio / mes</div><div class="kpi-v mono">${fmt(avgGas)}€</div><span class="kpi-d" style="color:var(--muted);">${monthsElapsed} ${monthsElapsed===1?'mes':'meses'} contados</span></div>
+    </div>`;
+    html += `<div class="anual-grid">
+      <div class="chart-wrap">
+        <div class="chart-title">Mes a mes <span style="font-weight:400;text-transform:none;letter-spacing:0;">— <span style="color:var(--green);">■</span> ingresos <span style="color:var(--red);">■</span> gastos</span></div>
+        ${withData.length ? svg : '<div class="day-chart-empty">Todavía no hay movimientos en este año.</div>'}
+      </div>
+      <div class="chart-wrap">
+        <div class="chart-title">Ahorro acumulado <span style="font-weight:400;text-transform:none;letter-spacing:0;">(ingresos − gastos, desde enero)</span></div>
+        ${withData.length ? svg2 : '<div class="day-chart-empty">Todavía no hay movimientos en este año.</div>'}
+      </div>
+      <div class="cell">
+        <div class="section-title" style="margin-bottom:10px;">Gasto por categoría</div>
+        ${catHtml}
+      </div>
+      <div class="cell">
+        <div class="section-title" style="margin-bottom:10px;">Meses destacados</div>
+        ${best ? `<div class="exp-row" style="border-top:none;padding-top:0;"><div class="exp-name">Mejor mes de ahorro</div><div class="mono" style="font-weight:700;color:var(--green);">${MES3[best.i]} · ${euro(best.net)}</div></div>
+        <div class="exp-row"><div class="exp-name">Peor mes</div><div class="mono" style="font-weight:700;color:${worst.net<0?'var(--red)':'var(--ink)'};">${MES3[worst.i]} · ${euro(worst.net)}</div></div>
+        <div class="exp-row"><div class="exp-name">Mayor gasto en un mes</div><div class="mono" style="font-weight:700;">${(()=>{ const g=withData.reduce((a,b)=>b.gas>a.gas?b:a); return MES3[g.i]+' · '+fmt(g.gas)+'€'; })()}</div></div>` : '<div class="empty-note">Sin datos todavía.</div>'}
+      </div>
+      <div class="cell anual-wide">
+        <div class="section-title" style="margin-bottom:10px;">Acumulados</div>
+        <div class="pivot-wrap"><table class="pivot">
+          <thead><tr><th>Mes</th><th>Ingresos</th><th>Gastos</th><th>Neto</th><th>Ahorro acum.</th><th>Saldo cuentas</th></tr></thead>
+          <tbody>${rows.map(r=>`<tr><td>${MES3[r.i]}</td><td>${r.ing?fmt(r.ing):'—'}</td><td>${r.gas?fmt(r.gas):'—'}</td><td style="color:${r.net>0?'var(--green)':(r.net<0?'var(--red)':'inherit')};">${(r.ing||r.gas)?fmt(r.net):'—'}</td><td>${r.acc!=null?fmt(r.acc):'—'}</td><td>${r.saldo!=null?fmt(r.saldo):'—'}</td></tr>`).join('')}
+          <tr style="font-weight:800;"><td>Total</td><td>${fmt(st.ing)}</td><td>${fmt(st.gas)}</td><td>${fmt(net)}</td><td></td><td></td></tr></tbody>
+        </table></div>
+        <div class="empty-note" style="padding:8px 0 0;text-align:left;">«Saldo cuentas» suma las cuentas que se calculan solas (las manuales, como inversiones, no entran). Los movimientos entre cuentas no cuentan como gasto ni ingreso.</div>
+      </div>
+    </div>`;
+    $app.innerHTML = html;
+    document.getElementById('anPrev').onclick = ()=>{ const i = yearList.indexOf(String(Y)); if(i>0){ anualYear = parseInt(yearList[i-1],10); renderAnual(); } };
+    document.getElementById('anNext').onclick = ()=>{ const i = yearList.indexOf(String(Y)); if(i<yearList.length-1){ anualYear = parseInt(yearList[i+1],10); renderAnual(); } };
+    $app.querySelectorAll('.anual-ctrl .fchip').forEach(el=> el.onclick = ()=>{ anualMode = el.dataset.m; renderAnual(); });
+  }
+
   // ================= CUENTA / LOGIN =================
   let sb = null, me = null, authEmail = '', loadedUserId = null;
   const AUTH_FN = 'cuentas-auth';
@@ -2801,7 +2979,8 @@
       <div class="field"><label>Contraseña</label><input type="password" id="aPw" autocomplete="current-password"></div>
       <div class="auth-err" id="aErr">${authForm.err||''}</div>
       <button class="btn-primary" id="aGo">Entrar</button>
-      <button class="auth-link" data-go="rec1">¿Has olvidado tu contraseña?</button>`;
+      <button class="auth-link" data-go="rec1">¿Has olvidado tu contraseña?</button>
+      <div class="auth-note" style="text-align:center;margin:14px 0 0;">¿Ya usabas Cuentas antes? Ve a <b>Crear cuenta</b>, pon tu usuario de siempre y sigue los pasos.</div>`;
     if(v==='signup1') body = `
       <div class="field"><label>Usuario</label><input type="text" id="aUser" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="letras, números y _" value="${authForm.user}"></div>
       <div class="field"><label>Correo (para recuperar la contraseña)</label><input type="email" id="aMail" autocomplete="email" autocapitalize="off" value="${authForm.email}"></div>
@@ -3141,10 +3320,12 @@
     if(!me){ renderLogin(); return; }
     if(!state.onboarded){ renderOnboarding(); return; }
     $tabbarWrap.style.display = 'flex';
+    document.body.classList.toggle('wide', activeTab==='anual' || activeTab==='dashboard');
     renderTabbar();
     if(activeTab==='resumen') renderResumen();
     else if(activeTab==='insertar') renderInsertar();
     else if(activeTab==='dashboard') renderDashboard();
+    else if(activeTab==='anual') renderAnual();
     else renderAjustes();
   }
 
