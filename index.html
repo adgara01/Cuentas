@@ -500,6 +500,28 @@
     .anual-grid .anual-wide{grid-column:1 / -1;}
     .anual-ctrl{flex-direction:row;justify-content:space-between;}
   }
+  /* ---------- movimientos ---------- */
+  .movs-ctrl{display:flex;flex-direction:column;gap:10px;}
+  .movs-ctrl input[type=search],.movs-ctrl select,.movs-ctrl input[type=date],.movs-ctrl input[type=number]{width:100%;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:14px;}
+  .movs-filters{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .movs-actions{display:flex;gap:8px;} .movs-actions .btn-ghost{margin:0;}
+  .movs-summary{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;font-weight:600;padding:0 6px 10px;color:var(--ink-soft);}
+  .movs-bulk{align-items:center;gap:8px;flex-wrap:wrap;background:var(--green-bg);border-radius:14px;padding:10px 12px;margin-bottom:10px;font-size:13px;}
+  .movs-bulk .btn-ghost,.movs-bulk .btn-secondary{width:auto;margin:0;padding:7px 12px;font-size:12.5px;}
+  .movs-table .mv-th{cursor:pointer;user-select:none;white-space:nowrap;}
+  .movs-table .mv-row{cursor:pointer;} .movs-table .mv-row:hover{background:var(--bg);}
+  .mv-comment{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .movs-table{border-collapse:collapse;width:100%;}
+  .movs-table th{font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);font-weight:700;padding:9px 10px;text-align:left;background:var(--bg);}
+  .movs-table td{font-size:12.5px;padding:9px 10px;border-top:1px solid var(--line);text-align:left;vertical-align:top;}
+  .movs-table th:last-child,.movs-table td:last-child{text-align:right;}
+  .movs-table th:first-child,.movs-table td:first-child{width:30px;padding-right:2px;}
+  .mv-only-s{display:none;} .mv-sub{font-size:11px;color:var(--muted);font-weight:500;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  @media (max-width:720px){ .mv-hide-s{display:none;} .mv-only-s{display:block;} .movs-table th,.movs-table td{padding:9px 6px;} }
+  @media (min-width:1000px){
+    .movs-filters{grid-template-columns:repeat(4,1fr);}
+    .movs-ctrl{flex-direction:column;}
+  }
   /* ---------- login ---------- */
   .auth-wrap{max-width:400px;margin:0 auto;padding:max(36px,env(safe-area-inset-top)) 18px 40px;text-align:center;}
   .auth-logo{width:84px;height:84px;border-radius:20px;box-shadow:var(--shadow);display:block;margin:0 auto 12px;}
@@ -1054,7 +1076,10 @@
   // ================= TABS =================
   function renderTabbar(){
     $tabbar.innerHTML = '';
-    [['resumen','Resumen'],['insertar','Insertar<br>movimiento'],['dashboard','Dashboard'],['anual','Año'],['ajustes','Objetivos y<br>ajustes']].forEach(([key,label])=>{
+    const tabs = [['resumen','Resumen'],['insertar','Insertar<br>movimiento'],['dashboard','Dashboard'],['anual','Año']];
+    if(window.innerWidth>=900) tabs.push(['movs','Movimientos']);
+    tabs.push(['ajustes','Objetivos y<br>ajustes']);
+    tabs.forEach(([key,label])=>{
       const b = document.createElement('button');
       b.className = 'tab-btn' + (activeTab===key?' active':'');
       b.innerHTML = label;
@@ -2891,10 +2916,133 @@
         <div class="empty-note" style="padding:8px 0 0;text-align:left;">«Saldo cuentas» suma las cuentas que se calculan solas (las manuales, como inversiones, no entran). Los movimientos entre cuentas no cuentan como gasto ni ingreso.</div>
       </div>
     </div>`;
+    html += `<button class="btn-ghost" id="anMovs" style="margin:12px 0 4px;">Buscar y filtrar todos los movimientos →</button>`;
     $app.innerHTML = html;
+    document.getElementById('anMovs').onclick = ()=>{ activeTab='movs'; render(); };
     document.getElementById('anPrev').onclick = ()=>{ const i = yearList.indexOf(String(Y)); if(i>0){ anualYear = parseInt(yearList[i-1],10); renderAnual(); } };
     document.getElementById('anNext').onclick = ()=>{ const i = yearList.indexOf(String(Y)); if(i<yearList.length-1){ anualYear = parseInt(yearList[i+1],10); renderAnual(); } };
     $app.querySelectorAll('.anual-ctrl .fchip').forEach(el=> el.onclick = ()=>{ anualMode = el.dataset.m; renderAnual(); });
+  }
+
+  // ================= MOVIMIENTOS (buscar, filtrar, ordenar, exportar) =================
+  const escH = v => String(v==null?'':v).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  let movF = { q:'', type:'', acc:'', cat:'', from:'', to:'', min:'', max:'', sort:'date', dir:-1, limit:200 };
+  const movSel = new Set();
+  function movFiltered(){
+    const q = movF.q.trim().toLowerCase();
+    const min = movF.min!=='' ? parseFloat(movF.min) : null, max = movF.max!=='' ? parseFloat(movF.max) : null;
+    let arr = state.transactions.filter(t=>{
+      if(movF.type && t.type!==movF.type) return false;
+      if(movF.acc && t.account!==movF.acc && t.toAccount!==movF.acc) return false;
+      if(movF.cat && t.category!==movF.cat) return false;
+      if(movF.from && t.date<movF.from) return false;
+      if(movF.to && t.date>movF.to) return false;
+      if(min!=null && !(t.amount>=min)) return false;
+      if(max!=null && !(t.amount<=max)) return false;
+      if(q){
+        const hay = (t.comment||'')+' '+(t.category||'')+' '+accName(t.account)+' '+(t.toAccount?accName(t.toAccount):'')+' '+t.type+' '+t.date+' '+String(t.amount).replace('.',',')+' '+t.amount;
+        if(!hay.toLowerCase().includes(q)) return false;
+      }
+      return true;
+    });
+    const key = movF.sort, dir = movF.dir;
+    const val = t => key==='amount' ? t.amount : key==='account' ? accName(t.account).toLowerCase() : key==='category' ? (t.category||'').toLowerCase() : key==='type' ? t.type : key==='comment' ? (t.comment||'').toLowerCase() : t.date;
+    arr.sort((a,b)=>{ const x=val(a), y=val(b); if(x<y) return -1*dir; if(x>y) return 1*dir; return (a.id<b.id?-1:1)*dir; });
+    return arr;
+  }
+  function downloadText(filename, text, mime){
+    const blob = new Blob([text], { type: mime||'text/plain;charset=utf-8' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename;
+    document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  }
+  function movCsv(arr){
+    const q = v => '"'+String(v==null?'':v).replace(/"/g,'""')+'"';
+    const lines = [['Fecha','Tipo','Cuenta','Cuenta destino','Categoría','Importe','Comentario','Extraordinario'].map(q).join(';')];
+    arr.forEach(t=> lines.push([t.date,t.type,accName(t.account),t.toAccount?accName(t.toAccount):'',t.category||'',String(t.amount).replace('.',','),t.comment||'',t.extraordinary?'Sí':''].map(q).join(';')));
+    return '﻿'+lines.join('\r\n');
+  }
+  function renderMovs(){
+    const allCats = Array.from(new Set([...state.categories, ...state.incomeCategories, 'Ahorro','Transferencia']));
+    let html = headerHtml('Movimientos');
+    html += `<div class="cell movs-ctrl">
+      <div class="field" style="margin:0;"><input type="search" id="mvQ" placeholder="Buscar: comentario, categoría, cuenta, importe…" value="${escH(movF.q)}"></div>
+      <div class="movs-filters">
+        <select id="mvType"><option value="">Todos los tipos</option>${['Gasto','Ingreso','Movimiento'].map(x=>`<option ${movF.type===x?'selected':''}>${x}</option>`).join('')}</select>
+        <select id="mvAcc"><option value="">Todas las cuentas</option>${state.accounts.map(a=>`<option value="${a.id}" ${movF.acc===a.id?'selected':''}>${escH(a.name)}</option>`).join('')}</select>
+        <select id="mvCat"><option value="">Todas las categorías</option>${allCats.map(c=>`<option ${movF.cat===c?'selected':''}>${escH(c)}</option>`).join('')}</select>
+        <input type="date" id="mvFrom" value="${movF.from}" title="Desde">
+        <input type="date" id="mvTo" value="${movF.to}" title="Hasta">
+        <input type="number" id="mvMin" placeholder="Mín €" inputmode="decimal" value="${movF.min}">
+        <input type="number" id="mvMax" placeholder="Máx €" inputmode="decimal" value="${movF.max}">
+      </div>
+      <div class="movs-actions">
+        <button class="btn-ghost" id="mvClear">Quitar filtros</button>
+        <button class="btn-ghost" id="mvCsv">Exportar CSV</button>
+      </div>
+    </div>
+    <div id="mvSummary" class="movs-summary"></div>
+    <div id="mvBulk" class="movs-bulk" style="display:none;"></div>
+    <div class="cell movs-tablecell"><div class="pivot-wrap"><table class="movs-table" id="mvTable"></table></div>
+      <button class="btn-ghost" id="mvMore" style="display:none;margin-top:10px;">Mostrar más</button></div>`;
+    $app.innerHTML = html;
+    const $ = id => document.getElementById(id);
+    function update(){
+      const arr = movFiltered();
+      const ing = arr.filter(t=>t.type==='Ingreso').reduce((s,t)=>s+t.amount,0);
+      const gas = arr.filter(t=>t.type==='Gasto').reduce((s,t)=>s+t.amount,0);
+      $('mvSummary').innerHTML = `<span><b>${arr.length}</b> movimientos</span><span style="color:var(--green);">+${fmt(ing)}€</span><span style="color:var(--red);">−${fmt(gas)}€</span><span class="mono" style="font-weight:800;">Neto ${euro(ing-gas)}</span>`;
+      const shown = arr.slice(0, movF.limit);
+      const arrow = k => movF.sort===k ? (movF.dir>0?' ▲':' ▼') : '';
+      const th = (k,l,cls)=>`<th data-sort="${k}" class="mv-th ${cls||''}">${l}${arrow(k)}</th>`;
+      $('mvTable').innerHTML = `<thead><tr><th style="width:28px;"><input type="checkbox" id="mvAll" ${shown.length && shown.every(t=>movSel.has(t.id))?'checked':''}></th>${th('date','Fecha')}${th('type','Tipo','mv-hide-s')}${th('account','Cuenta','mv-hide-s')}${th('category','Categoría')}${th('comment','Comentario','mv-hide-s')}${th('amount','Importe')}</tr></thead><tbody>${shown.length ? shown.map(t=>{
+        const sign = t.type==='Ingreso' ? '+' : t.type==='Gasto' ? '−' : '↔';
+        const col = t.type==='Ingreso' ? 'var(--green)' : t.type==='Gasto' ? 'var(--red)' : 'var(--ink-soft)';
+        return `<tr class="mv-row" data-id="${t.id}"><td><input type="checkbox" class="mv-chk" data-id="${t.id}" ${movSel.has(t.id)?'checked':''}></td><td class="mono" style="white-space:nowrap;">${dowShort(t.date)} ${t.date.slice(8)}/${t.date.slice(5,7)}/${t.date.slice(2,4)}</td><td class="mv-hide-s">${t.type}${t.extraordinary?' ·extra':''}</td><td class="mv-hide-s">${escH(accName(t.account))}${t.toAccount?' → '+escH(accName(t.toAccount)):''}</td><td>${escH(t.category||'')}<div class="mv-sub mv-only-s">${escH(accName(t.account))}${t.toAccount?' → '+escH(accName(t.toAccount)):''}${t.comment?' · '+escH(t.comment):''}</div></td><td class="mv-hide-s mv-comment">${escH(t.comment||'')}</td><td class="mono" style="color:${col};font-weight:700;white-space:nowrap;text-align:right;">${sign}${fmt(t.amount)}€</td></tr>`;
+      }).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:20px;">No hay movimientos con estos filtros.</td></tr>'}</tbody>`;
+      const more = $('mvMore');
+      if(arr.length>shown.length){ more.style.display='block'; more.textContent = 'Mostrar más ('+(arr.length-shown.length)+' restantes)'; } else more.style.display='none';
+      // cabeceras, filas, casillas
+      $('mvTable').querySelectorAll('.mv-th').forEach(h=> h.onclick = ()=>{ const k=h.dataset.sort; if(movF.sort===k) movF.dir*=-1; else { movF.sort=k; movF.dir = (k==='date'||k==='amount') ? -1 : 1; } update(); });
+      $('mvTable').querySelectorAll('.mv-row').forEach(r=> r.onclick = (e)=>{ if(e.target.tagName==='INPUT') return; openEditSheet(r.dataset.id, ()=>{ update(); }); });
+      $('mvTable').querySelectorAll('.mv-chk').forEach(c=> c.onchange = ()=>{ c.checked ? movSel.add(c.dataset.id) : movSel.delete(c.dataset.id); bulk(); });
+      const all = $('mvAll'); if(all) all.onchange = ()=>{ shown.forEach(t=> all.checked ? movSel.add(t.id) : movSel.delete(t.id)); update(); };
+      bulk();
+    }
+    function bulk(){
+      const b = $('mvBulk');
+      const ids = Array.from(movSel).filter(id=>state.transactions.some(t=>t.id===id));
+      if(!ids.length){ b.style.display='none'; return; }
+      b.style.display='flex';
+      b.innerHTML = `<span><b>${ids.length}</b> seleccionados</span><button class="btn-ghost" id="mvBCat">Cambiar categoría</button><button class="btn-secondary" id="mvBDel">Eliminar</button><button class="btn-ghost" id="mvBNone">Quitar selección</button>`;
+      $('mvBNone').onclick = ()=>{ movSel.clear(); update(); };
+      $('mvBDel').onclick = async ()=>{
+        if(!confirm('¿Eliminar '+ids.length+' movimientos? No se puede deshacer.')) return;
+        state.transactions = state.transactions.filter(t=>!movSel.has(t.id)); movSel.clear();
+        await saveState(); showToast('Eliminados'); update();
+      };
+      $('mvBCat').onclick = ()=>{
+        $sheet.innerHTML = `<h2>Cambiar categoría <span class="close-x" id="mcX">✕</span></h2>
+          <div class="empty-note" style="padding:0 0 10px;text-align:left;">Se aplica a los ${ids.length} movimientos seleccionados. Los gastos solo admiten categorías de gasto y los ingresos, de ingreso; los movimientos entre cuentas no se tocan.</div>
+          <div class="field"><label>Gastos → categoría</label><div class="chip-row" id="mcG">${state.categories.map(c=>`<div class="chip" data-c="${escH(c)}">${escH(c)}</div>`).join('')}</div></div>
+          <div class="field"><label>Ingresos → categoría</label><div class="chip-row" id="mcI">${state.incomeCategories.map(c=>`<div class="chip" data-c="${escH(c)}">${escH(c)}</div>`).join('')}</div></div>`;
+        $overlay.classList.add('show');
+        $('mcX').onclick = ()=> $overlay.classList.remove('show');
+        const apply = async (type, cat)=>{
+          let n=0; state.transactions.forEach(t=>{ if(movSel.has(t.id) && t.type===type){ t.category = cat; n++; } });
+          if(!n){ showToast('No hay '+(type==='Gasto'?'gastos':'ingresos')+' seleccionados'); return; }
+          await saveState(); $overlay.classList.remove('show'); showToast(n+' actualizados'); update();
+        };
+        $sheet.querySelectorAll('#mcG .chip').forEach(c=> c.onclick = ()=>apply('Gasto', c.dataset.c));
+        $sheet.querySelectorAll('#mcI .chip').forEach(c=> c.onclick = ()=>apply('Ingreso', c.dataset.c));
+      };
+    }
+    const bind = (id, key, ev)=>{ $(id).addEventListener(ev||'input', e=>{ movF[key] = e.target.value; movF.limit = 200; update(); }); };
+    bind('mvQ','q'); bind('mvType','type','change'); bind('mvAcc','acc','change'); bind('mvCat','cat','change');
+    bind('mvFrom','from','change'); bind('mvTo','to','change'); bind('mvMin','min'); bind('mvMax','max');
+    $('mvClear').onclick = ()=>{ Object.assign(movF, { q:'',type:'',acc:'',cat:'',from:'',to:'',min:'',max:'',limit:200 }); renderMovs(); };
+    $('mvCsv').onclick = ()=>{ const arr = movFiltered(); downloadText('cuentas-movimientos-'+todayStr()+'.csv', movCsv(arr), 'text/csv;charset=utf-8'); showToast(arr.length+' movimientos exportados'); };
+    $('mvMore').onclick = ()=>{ movF.limit += 200; update(); };
+    update();
   }
 
   // ================= CUENTA / LOGIN =================
@@ -3320,12 +3468,13 @@
     if(!me){ renderLogin(); return; }
     if(!state.onboarded){ renderOnboarding(); return; }
     $tabbarWrap.style.display = 'flex';
-    document.body.classList.toggle('wide', activeTab==='anual' || activeTab==='dashboard');
+    document.body.classList.toggle('wide', activeTab==='anual' || activeTab==='dashboard' || activeTab==='movs');
     renderTabbar();
     if(activeTab==='resumen') renderResumen();
     else if(activeTab==='insertar') renderInsertar();
     else if(activeTab==='dashboard') renderDashboard();
     else if(activeTab==='anual') renderAnual();
+    else if(activeTab==='movs') renderMovs();
     else renderAjustes();
   }
 
