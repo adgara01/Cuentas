@@ -304,6 +304,29 @@
     html{scrollbar-width:thin;scrollbar-color:var(--line) transparent;}
     ::-webkit-scrollbar{width:10px;height:10px;} ::-webkit-scrollbar-thumb{background:var(--line);border-radius:8px;border:2px solid transparent;background-clip:padding-box;}
   }
+  /* ---------- pagos con Apple Pay: pendientes ---------- */
+  .pend-banner{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--amber-bg);color:var(--amber);border-radius:16px;padding:12px 16px;margin-bottom:12px;font-size:13.5px;font-weight:800;cursor:pointer;}
+  .pend-banner span{font-weight:700;font-size:12.5px;}
+  .pend-card{margin-bottom:10px;}
+  .pend-top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;}
+  .pend-name{font-size:15px;font-weight:800;word-break:break-word;}
+  .pend-sub{font-size:11.5px;color:var(--muted);margin-top:2px;}
+  .pend-amt{font-size:17px;font-weight:800;color:var(--red);white-space:nowrap;}
+  .pend-sug{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px;font-size:14px;font-weight:700;}
+  .pend-sug .q{flex:1 1 100%;color:var(--ink-soft);}
+  .pend-sug button,.pend-act button{border:none;border-radius:12px;padding:10px 16px;font:inherit;font-size:13px;font-weight:800;cursor:pointer;}
+  .pend-ok{background:var(--green);color:#fff;} .pend-chg{background:var(--bg);color:var(--ink);}
+  .pend-chips{margin-top:12px;}
+  .pend-act{display:flex;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap;}
+  .pend-act button{background:transparent;color:var(--muted);padding:6px 4px;}
+  .pend-act select{flex:1;min-width:0;border:1.5px solid var(--line);border-radius:10px;padding:8px 10px;font:inherit;font-size:13px;font-weight:600;background:var(--cell);color:var(--ink);}
+  .pend-hint{font-size:12px;color:var(--muted);margin:0 4px 12px;line-height:1.45;}
+  .auto-tag{color:var(--green);background:var(--green-bg);}
+  .pbadge{display:inline-block;min-width:18px;padding:1px 6px;margin-left:6px;border-radius:999px;background:var(--red);color:#fff;font-size:11px;font-weight:800;line-height:1.4;}
+  .rule-list{max-height:260px;overflow:auto;margin-top:6px;}
+  .rule-row{display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid var(--line);font-size:13px;}
+  .rule-row:first-child{border-top:none;} .rule-row b{flex:1;font-weight:700;text-transform:capitalize;word-break:break-word;}
+  .rule-row span{color:var(--ink-soft);} .rule-row i{font-style:normal;cursor:pointer;color:var(--muted);padding:2px 6px;}
   /* ---------- tabs ---------- */
   .tabbar{
     position:fixed;bottom:0;left:0;right:0;background:var(--cell);border-top:none;
@@ -709,7 +732,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
-  const APP_VERSION = '2026.10.16-15';
+  const APP_VERSION = '2026.10.30-1';
   const DEFAULT_STATE = {
     onboarded: false,
     accounts: [
@@ -734,6 +757,8 @@
       {id:'g-adricova', name:'Adri Cova', categories:['Adri Cova']}
     ],
     filterPreset: { types:[], accounts:[], categories:[] },
+    merchantRules: {},
+    cardMap: {},
     syncCode: '',
     _updatedAt: 0
   };
@@ -1207,7 +1232,7 @@
     $tabbarWrap.querySelectorAll('.side-brand,.side-foot,.fab-add,.side-create').forEach(e=>e.remove());
     const desktop = window.innerWidth>=1000;
     let tabs;
-    if(desktop) tabs = [['resumen','Resumen'],['dashboard','Dashboard'],['anual','Año'],['movs','Movimientos'],['ajustes','Objetivos y ajustes']];
+    if(desktop) tabs = [['resumen','Resumen'],['dashboard','Dashboard'],['anual','Año'],['movs','Movimientos'],['pend','Pendientes'],['ajustes','Objetivos y ajustes']];
     else tabs = [['resumen','Resumen'],['dashboard','Dashboard'],['anual','Año'],['ajustes','Objetivos y<br>ajustes']];
     if(desktop){
       const brand = document.createElement('div'); brand.className = 'side-brand';
@@ -1221,7 +1246,7 @@
     tabs.forEach(([key,label],ti)=>{
       const b = document.createElement('button');
       b.className = 'tab-btn' + (activeTab===key?' active':'');
-      b.innerHTML = desktop ? label.replace('<br>',' ') + '<kbd class="kk">'+(ti+1)+'</kbd>' : label;
+      b.innerHTML = desktop ? label.replace('<br>',' ') + (key==='pend' && pendingList().length ? '<span class="pbadge">'+pendingList().length+'</span>' : '') + '<kbd class="kk">'+(ti+1)+'</kbd>' : label;
       b.onclick = ()=>{ activeTab=key; render(); };
       $tabbar.appendChild(b);
       if(!desktop && key==='dashboard'){ const sp=document.createElement('div'); sp.className='tab-spacer'; $tabbar.appendChild(sp); }
@@ -1239,7 +1264,7 @@
     }
   }
 
-  const DESK_TITLES = { resumen:'Resumen', insertar:'Nuevo movimiento', dashboard:'Dashboard', anual:'Año', movs:'Movimientos', ajustes:'Objetivos y ajustes' };
+  const DESK_TITLES = { pend:'Pendientes', resumen:'Resumen', insertar:'Nuevo movimiento', dashboard:'Dashboard', anual:'Año', movs:'Movimientos', ajustes:'Objetivos y ajustes' };
   function headerHtml(sub){
     if(window.innerWidth>=1000){
       return `<header class="top"><h1>${DESK_TITLES[activeTab]||'Cuentas'}</h1><div class="fecha">${new Date().toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'})}</div></header>`;
@@ -1433,6 +1458,7 @@
 
     $app.innerHTML = `
       ${headerHtml()}
+      ${pendBannerHtml()}
       <div class="cell total-cell">
         <button class="privacy-btn" id="privacyToggle">${privacyMode ? EYE_OFF_ICON : EYE_ICON}</button>
         <div class="t-lbl">Patrimonio total</div>
@@ -1453,6 +1479,7 @@
       </div>
     `;
 
+    wirePendBanner();
     document.getElementById('privacyToggle').onclick = ()=>{
       privacyMode = !privacyMode;
       renderResumen();
@@ -1479,6 +1506,93 @@
         await saveState();
         renderResumen();
       };
+    });
+  }
+
+  // ================= PAGOS CON APPLE PAY: aprender y pendientes =================
+  const NORM_FROM = 'áàäâéèëêíìïîóòöôúùüûñç', NORM_TO = 'aaaaeeeeiiiioooouuuunc';
+  function normName(t){
+    return String(t||'').toLowerCase().split('').map(ch=>{ const i = NORM_FROM.indexOf(ch); return i>=0 ? NORM_TO[i] : ch; }).join('')
+      .replace(/[^a-z ]/g,' ').replace(/\s+/g,' ').trim();
+  }
+  // grupos de palabras por tipo de comercio -> se casan con TUS categorías por nombre
+  const GUESS_GROUPS = [
+    { cat:/transp|coche|gasol/i, words:['repsol','cepsa','galp','shell','bp','gasolinera','estacion de servicio','renfe','metro','tmb','rodalies','fgc','uber','cabify','bolt','free now','taxi','parking','aparcamiento','saba','bicing','iberia','vueling','ryanair','easyjet','blablacar','alsa','peaje','autopista','ouigo','iryo','avanza','emt','tram','lime','cercanias','bus','autobus','gasoil','combustible','electrolinera','endesa x','tesla'] },
+    { cat:/suscrip|subscrip/i, words:['netflix','spotify','hbo','disney','prime video','icloud','apple com bill','google one','youtube','openai','chatgpt','anthropic','claude','dazn','filmin','audible','patreon','twitch'] },
+    { cat:/rest|bar|comida|comer|cafe/i, words:['restaurante','restaurant','bar','cafeteria','cafe','cerveceria','taberna','pizz','burger','mcdonald','mcdonalds','kfc','telepizza','dominos','starbucks','foodie','glovo','uber eats','just eat','sushi','kebab','bocadill','tapas','pub','cocteler','heladeria','panaderia','pasteleria','horno','bodega','wok','vips','ginos','tgb','montaditos','pans','rodilla','taco bell','five guys','lizarran','tagliatella','foster','bagel','brunch','takeaway','poke','ramen','vermuteria','gelat','granja','xiringuito','chiringuito','asador','braseria','marisqueria','fonda'] },
+    { cat:/super|aliment|comida|mercado/i, fb:/compra/i, words:['mercadona','carrefour','lidl','aldi','dia','alcampo','eroski','consum','bonpreu','esclat','caprabo','condis','supermercado','supermercat','hipercor','ahorramas','froiz','charter','fruteria','carniceria','pescaderia','verduleria','herbolario'] },
+    { cat:/ocio/i, words:['cine','cinesa','yelmo','teatro','steam','playstation','xbox','nintendo','ticketmaster','entradas','discoteca','club','bolera','escape room','museo','parque','gym','gimnasio','basic fit','fitness','padel','tenis','golf','karting','salsa','festival','concierto','ocio','bingo','casino','loteria','tickets','eventbrite','fever','bowling'] },
+    { cat:/vacac|viaje/i, words:['booking','airbnb','hotel','hostal','hostel','camping','apartamentos','resort','expedia','trivago','despegar','civitatis','getyourguide','rentalcars','hertz','avis','europcar'] },
+    { cat:/salud|farm/i, words:['farmacia','clinica','dentista','optica','fisio','medico','hospital','laboratorio','quiron','sanitas','dkv'] },
+    { cat:/compra|ropa|tienda/i, words:['zara','bershka','pull bear','pullandbear','stradivarius','massimo dutti','h m','hm','primark','mango','shein','decathlon','amazon','amzn','el corte ingles','corte ingles','ikea','leroy merlin','zalando','nike','adidas','sprinter','jd sports','foot locker','uniqlo','tezenis','calzedonia','intimissimi','springfield','cortefiel','women secret','oysho','lefties','boutique','moda','fashion','ropa','zapater','calzado','joyer','perfumer','sephora','douglas','primor','fnac','media markt','mediamarkt','pccomponentes','apple store','aliexpress','temu','wallapop','tiger','action','bazar','regalos','libreria','papeleria','tienda','shop','store','outlet','vinted','h&m','kiabi','desigual','guess','levis','lacoste','tommy','calvin klein','bimba','parfois','pandora','swarovski','natura','kiko','zapatos','deportes','bricolaje','ferreteria','bauhaus','brico','maisons du monde','zara home','kave home','conforama','leroy'] }
+  ];
+  function guessCategory(raw){
+    const n = ' '+normName(raw)+' ';
+    if(n.trim()==='') return '';
+    for(const g of GUESS_GROUPS){
+      const cat = state.categories.find(c=>g.cat.test(c)) || (g.fb ? state.categories.find(c=>g.fb.test(c)) : null);
+      if(!cat) continue;
+      for(const w0 of g.words){
+        const w = normName(w0); if(!w) continue;
+        if(w.length<=4 ? n.includes(' '+w+' ') : n.includes(' '+w)) return cat;
+      }
+    }
+    return '';
+  }
+  // los pagos nuevos sin categoría reciben una sugerencia (una sola vez)
+  function ensureSuggestions(){
+    let ch = false;
+    state.transactions.forEach(t=>{
+      if(t.pending && !t.sg){
+        const g = guessCategory(t.merchantRaw || t.comment || '');
+        t.sg = 1; ch = true;
+        if(g && (!t.category || t.category==='Sin categorizar')){ t.suggest = g; t.category = g; }
+      }
+    });
+    if(ch) saveState();
+  }
+  const pendingList = ()=> state.transactions.filter(t=>t.pending).sort((a,b)=> b.date.localeCompare(a.date) || (b.ts||0)-(a.ts||0));
+  const pendBannerHtml = ()=>{ const n = pendingList().length; return n ? `<div class="pend-banner" id="pendBanner">⏳ ${n} pago${n>1?'s':''} por confirmar <span>Revisar →</span></div>` : ''; };
+  function wirePendBanner(){ const b = document.getElementById('pendBanner'); if(b) b.onclick = ()=>{ activeTab='pend'; render(); }; }
+  async function confirmPending(t, cat, accId){
+    t.category = cat;
+    if(accId) t.account = accId;
+    if(t.merchant) state.merchantRules[t.merchant] = cat;
+    if(t.acctGuess || accId){ if(t.card) state.cardMap[normName(t.card)] = t.account; delete t.acctGuess; }
+    delete t.pending; delete t.suggest; delete t.sg;
+    // otros pendientes del mismo comercio: se confirman solos
+    let extra = 0;
+    state.transactions.forEach(o=>{ if(o!==t && o.pending && t.merchant && o.merchant===t.merchant && !o.acctGuess){ o.category = cat; delete o.pending; delete o.suggest; delete o.sg; extra++; } });
+    await saveState();
+    showToast('Aprendido: '+(t.merchantRaw||t.comment||'comercio')+' → '+cat+(extra?' · +'+extra+' más':''));
+  }
+  function renderPend(){
+    const list = pendingList();
+    const accs = state.accounts.filter(a=>!a.manual);
+    let html = headerHtml('Pendientes');
+    html += `<div class="pend-hint">Pagos con Apple Pay por confirmar. Al elegir la categoría, Cuentas aprende ese comercio y la próxima vez lo apunta solo.</div>`;
+    if(!list.length) html += `<div class="empty-note">Todo al día. No hay pagos por confirmar. 🎉</div>`;
+    list.forEach(t=>{
+      const sug = t.suggest && t.category===t.suggest;
+      html += `<div class="cell pend-card" data-id="${t.id}">
+        <div class="pend-top"><div><div class="pend-name">${escH(t.merchantRaw || t.comment || 'Pago')}</div>
+          <div class="pend-sub">${new Date(t.date+'T00:00:00').toLocaleDateString('es-ES',{day:'2-digit',month:'short'})} · ${escH(accName(t.account))}${t.card?' · '+escH(t.card):''}</div></div>
+          <div class="pend-amt mono">− ${fmt(t.amount)}€</div></div>
+        ${sug ? `<div class="pend-sug"><div class="q">¿Es <b>${escH(t.suggest)}</b>?</div><button class="pend-ok" data-act="ok">Confirmar</button><button class="pend-chg" data-act="chg">Cambiar</button></div>` : ''}
+        <div class="chip-row pend-chips" ${sug?'style="display:none;"':''}>${state.categories.map(c=>`<div class="chip" data-cat="${escH(c)}">${escH(c)}</div>`).join('')}</div>
+        <div class="pend-act">${t.acctGuess ? `<span style="font-size:12px;color:var(--muted);font-weight:700;">¿De qué cuenta?</span><select data-acc>${accs.map(a=>`<option value="${a.id}" ${a.id===t.account?'selected':''}>${escH(a.name)}</option>`).join('')}</select>` : ''}<button data-act="edit">Editar</button><button data-act="del" style="color:var(--red);">Quitar</button></div>
+      </div>`;
+    });
+    $app.innerHTML = html;
+    $app.querySelectorAll('.pend-card').forEach(card=>{
+      const t = state.transactions.find(x=>x.id===card.dataset.id); if(!t) return;
+      const accSel = ()=>{ const s = card.querySelector('select[data-acc]'); return s ? s.value : null; };
+      const done = async (cat)=>{ await confirmPending(t, cat, accSel()); renderPend(); };
+      card.querySelectorAll('.chip[data-cat]').forEach(c=> c.onclick = ()=> done(c.dataset.cat));
+      const ok = card.querySelector('[data-act=ok]'); if(ok) ok.onclick = ()=> done(t.suggest);
+      const chg = card.querySelector('[data-act=chg]'); if(chg) chg.onclick = ()=>{ card.querySelector('.pend-chips').style.display=''; card.querySelector('.pend-sug').style.display='none'; };
+      card.querySelector('[data-act=edit]').onclick = ()=> openEditSheet(t.id, renderPend);
+      card.querySelector('[data-act=del]').onclick = async ()=>{ state.transactions = state.transactions.filter(x=>x.id!==t.id); await saveState(); showToast('Pago quitado'); renderPend(); };
     });
   }
 
@@ -1509,7 +1623,7 @@
         return `<div class="hist-row" data-id="${t.id}">
           <div class="hist-dot ${dotClass}"></div>
           <div class="hist-main">
-            <div class="hist-cat">${t.category}${t.extraordinary ? ' <span class="extra-tag">extra</span>' : ''}</div>
+            <div class="hist-cat">${t.category}${t.extraordinary ? ' <span class="extra-tag">extra</span>' : ''}${t.pending ? ' <span class="extra-tag">por confirmar</span>' : (t.auto ? ' <span class="extra-tag auto-tag">auto</span>' : '')}</div>
             <div class="hist-sub">${t.comment ? t.comment+' · ' : ''}${t.type==='Movimiento' ? (accName(t.account)+' → '+accName(t.toAccount)) : accName(t.account)}</div>
           </div>
           <div class="hist-right">
@@ -1523,6 +1637,7 @@
     function draw(){
       $app.innerHTML = `
         ${headerHtml('Nuevo movimiento')}
+        ${pendBannerHtml()}
         <div class="ins-layout"><div>
         <div class="cell ins-form">
           <div class="seg" id="typeSeg">
@@ -1560,6 +1675,7 @@
         <div class="ins-hist"><div class="hist-title">Historial reciente</div>
         ${historyHtml()}</div></div>
       `;
+      wirePendBanner();
       bind();
     }
 
@@ -1949,7 +2065,7 @@
             <div class="mv-line" data-id="${t.id}">
               <div class="mv-dot ${dotClass}"></div>
               <div class="mv-main">
-                <div class="mv-cat">${t.category}${t.extraordinary ? ' <span class="extra-tag">extra</span>' : ''}</div>
+                <div class="mv-cat">${t.category}${t.extraordinary ? ' <span class="extra-tag">extra</span>' : ''}${t.pending ? ' <span class="extra-tag">por confirmar</span>' : (t.auto ? ' <span class="extra-tag auto-tag">auto</span>' : '')}</div>
                 ${t.comment ? `<div class="mv-comment">${t.comment}</div>` : ''}
               </div>
               <div class="mv-right">
@@ -2344,6 +2460,23 @@
 
     html += collapsibleCard('lock', 'Bloqueo con PIN y Face ID', lockCardHtml());
 
+    { // ---- pagos con Apple Pay ----
+      const accsT = state.accounts.filter(a=>!a.manual);
+      const seen = new Set(Object.keys(state.cardMap||{}));
+      state.transactions.forEach(t=>{ if(t.card) seen.add(normName(t.card)); });
+      const rules = Object.entries(state.merchantRules||{}).sort((a,b)=>a[0].localeCompare(b[0]));
+      html += collapsibleCard('pagos', 'Pagos con Apple Pay', `
+        <div class="empty-note" style="text-align:left;padding:0 0 10px;">Enlaza cada tarjeta de Cartera con su cuenta. Así cada pago resta de la cuenta correcta.</div>
+        ${seen.size ? Array.from(seen).map(k=>`<div class="exp-row" style="gap:10px;"><div class="exp-name" style="text-transform:capitalize;">${escH(k)}</div><select data-card="${escH(k)}" style="max-width:55%;"><option value="">— sin enlazar —</option>${accsT.map(a=>`<option value="${a.id}" ${state.cardMap[k]===a.id?'selected':''}>${escH(a.name)}</option>`).join('')}</select></div>`).join('') : '<div class="empty-note">Todavía no hay tarjetas. Aparecen solas con el primer pago, o añádelas aquí.</div>'}
+        <div class="two-col" style="margin-top:10px;align-items:end;"><div class="field" style="margin:0;"><input type="text" id="cardNew" placeholder="Tarjeta, como sale en Cartera" autocapitalize="off"></div><button class="btn-ghost" id="cardAdd">Añadir tarjeta</button></div>
+        <div class="section-title" style="margin:18px 0 4px;">Comercios aprendidos (${rules.length})</div>
+        ${rules.length ? `<div class="rule-list">${rules.map(([k,c])=>`<div class="rule-row"><b>${escH(k)}</b><span>${escH(c)}</span><i data-rule="${escH(k)}" title="Olvidar">✕</i></div>`).join('')}</div>` : '<div class="empty-note">Aún no ha aprendido ninguno. Se llena al confirmar pagos en Pendientes.</div>'}
+        <div class="section-title" style="margin:18px 0 8px;">Para el Atajo de iPhone</div>
+        <button class="btn-ghost" id="copyUrl">Copiar dirección (URL)</button>
+        <button class="btn-ghost" id="copyKey" style="margin-top:8px;">Copiar clave pública (apikey)</button>
+      `);
+    }
+
     html += collapsibleCard('apariencia', 'Apariencia', `
       <div class="empty-note" style="padding:0 0 12px;text-align:left;">Automático sigue el modo de tu dispositivo. Se guarda solo en este dispositivo.</div>
       <div class="seg" id="themeSeg" style="margin-bottom:0;">
@@ -2512,6 +2645,11 @@
     document.getElementById('accMailBtn').onclick = openChangeEmail;
     document.getElementById('accPwBtn').onclick = openChangePassword;
     document.getElementById('accKeyBtn').onclick = openShortcutKey;
+    $app.querySelectorAll('select[data-card]').forEach(sel=> sel.onchange = async ()=>{ if(sel.value) state.cardMap[sel.dataset.card] = sel.value; else delete state.cardMap[sel.dataset.card]; await saveState(); showToast('Tarjeta enlazada'); });
+    { const add = document.getElementById('cardAdd'); if(add) add.onclick = async ()=>{ const k = normName(document.getElementById('cardNew').value); if(!k){ showToast('Escribe el nombre de la tarjeta'); return; } if(!(k in state.cardMap)){ const a0 = state.accounts.find(a=>a.type==='corriente' && !a.manual) || state.accounts[0]; state.cardMap[k] = a0.id; } await saveState(); renderAjustes(); }; }
+    $app.querySelectorAll('i[data-rule]').forEach(i=> i.onclick = async ()=>{ delete state.merchantRules[i.dataset.rule]; await saveState(); renderAjustes(); });
+    const copyTxt = async (txt,msg)=>{ try{ await navigator.clipboard.writeText(txt); showToast(msg); }catch(e){ showToast('No se pudo copiar'); } };
+    { const cu = document.getElementById('copyUrl'); if(cu) cu.onclick = ()=> copyTxt(SUPABASE_URL+'/rest/v1/rpc/cuentas_add_pago','Dirección copiada'); const ck = document.getElementById('copyKey'); if(ck) ck.onclick = ()=> copyTxt(SUPABASE_ANON_KEY,'Clave copiada'); }
     document.getElementById('logoutBtn').onclick = doLogout;
     bindLockCard();
 
@@ -2847,6 +2985,7 @@
     if(!editing) return;
     let type = editing.type;
     let account = editing.account;
+    const origAcc = editing.account;
     let toAccount = editing.toAccount || state.accounts[0].id;
     let category = editing.category;
     const catList = type==='Ingreso' ? state.incomeCategories : state.categories;
@@ -2920,6 +3059,11 @@
         editing.category = state.accounts.find(a=>a.id===toAcc)?.type==='ahorro' ? 'Ahorro' : 'Transferencia';
       } else {
         editing.category = category;
+      }
+      if(editing.src==='applepay'){
+        if(editing.merchant && category && category!=='Sin categorizar') state.merchantRules[editing.merchant] = category;
+        if(editing.pending && category && category!=='Sin categorizar'){ delete editing.pending; delete editing.suggest; delete editing.sg; delete editing.auto; }
+        if(editing.card && (editing.acctGuess || acc!==origAcc)){ state.cardMap[normName(editing.card)] = acc; delete editing.acctGuess; }
       }
       await saveState();
       $overlay.classList.remove('show');
@@ -3241,7 +3385,7 @@
       $('mvTable').innerHTML = `<thead><tr><th style="width:28px;"><input type="checkbox" id="mvAll" ${shown.length && shown.every(t=>movSel.has(t.id))?'checked':''}></th>${th('date','Fecha')}${th('type','Tipo','mv-hide-s')}${th('account','Cuenta','mv-hide-s')}${th('category','Categoría')}${th('comment','Comentario','mv-hide-s')}${th('amount','Importe')}</tr></thead><tbody>${shown.length ? shown.map(t=>{
         const sign = t.type==='Ingreso' ? '+' : t.type==='Gasto' ? '−' : '↔';
         const col = t.type==='Ingreso' ? 'var(--green)' : t.type==='Gasto' ? 'var(--red)' : 'var(--ink-soft)';
-        return `<tr class="mv-row" data-id="${t.id}"><td><input type="checkbox" class="mv-chk" data-id="${t.id}" ${movSel.has(t.id)?'checked':''}></td><td class="mono" style="white-space:nowrap;">${dowShort(t.date)} ${t.date.slice(8)}/${t.date.slice(5,7)}/${t.date.slice(2,4)}</td><td class="mv-hide-s">${t.type}${t.extraordinary?' ·extra':''}</td><td class="mv-hide-s">${escH(accName(t.account))}${t.toAccount?' → '+escH(accName(t.toAccount)):''}</td><td>${escH(t.category||'')}<div class="mv-sub mv-only-s">${escH(accName(t.account))}${t.toAccount?' → '+escH(accName(t.toAccount)):''}${t.comment?' · '+escH(t.comment):''}</div></td><td class="mv-hide-s mv-comment">${escH(t.comment||'')}</td><td class="mono" style="color:${col};font-weight:700;white-space:nowrap;text-align:right;">${sign}${fmt(t.amount)}€</td></tr>`;
+        return `<tr class="mv-row" data-id="${t.id}"><td><input type="checkbox" class="mv-chk" data-id="${t.id}" ${movSel.has(t.id)?'checked':''}></td><td class="mono" style="white-space:nowrap;">${dowShort(t.date)} ${t.date.slice(8)}/${t.date.slice(5,7)}/${t.date.slice(2,4)}</td><td class="mv-hide-s">${t.type}${t.extraordinary?' ·extra':''}</td><td class="mv-hide-s">${escH(accName(t.account))}${t.toAccount?' → '+escH(accName(t.toAccount)):''}</td><td>${escH(t.category||'')}${t.pending?' <span class="extra-tag">por confirmar</span>':''}<div class="mv-sub mv-only-s">${escH(accName(t.account))}${t.toAccount?' → '+escH(accName(t.toAccount)):''}${t.comment?' · '+escH(t.comment):''}</div></td><td class="mv-hide-s mv-comment">${escH(t.comment||'')}</td><td class="mono" style="color:${col};font-weight:700;white-space:nowrap;text-align:right;">${sign}${fmt(t.amount)}€</td></tr>`;
       }).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:20px;">No hay movimientos con estos filtros.</td></tr>'}</tbody>`;
       const more = $('mvMore');
       if(arr.length>shown.length){ more.style.display='block'; more.textContent = 'Mostrar más ('+(arr.length-shown.length)+' restantes)'; } else more.style.display='none';
@@ -3898,9 +4042,9 @@
   }
 
   // ================= ATAJOS DE TECLADO (solo ordenador) =================
-  const SHORTCUT_TABS = ['resumen','dashboard','anual','movs','ajustes'];
+  const SHORTCUT_TABS = ['resumen','dashboard','anual','movs','pend','ajustes'];
   function showShortcuts(){
-    const rows = [['1 – 5','Resumen, Dashboard, Año, Movimientos, Ajustes'],['N','Nuevo movimiento'],['/','Buscar en Movimientos'],['← →','Año anterior / siguiente (en Año)'],['Intro','Añadir movimiento (en el formulario)'],['Esc','Cerrar ventana'],['?','Esta ayuda']];
+    const rows = [['1 – 6','Resumen, Dashboard, Año, Movimientos, Pendientes, Ajustes'],['N','Nuevo movimiento'],['/','Buscar en Movimientos'],['← →','Año anterior / siguiente (en Año)'],['Intro','Añadir movimiento (en el formulario)'],['Esc','Cerrar ventana'],['?','Esta ayuda']];
     $sheet.innerHTML = `<h2>Atajos de teclado <span class="close-x" id="closeX">✕</span></h2>
       <table class="kbd-table">${rows.map(r=>`<tr><td><kbd class="kk">${r[0]}</kbd></td><td>${r[1]}</td></tr>`).join('')}</table>`;
     $overlay.classList.add('show');
@@ -3915,7 +4059,7 @@
     if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT'||(t&&t.isContentEditable)) return;
     if($overlay.classList.contains('show')) return;
     const k = e.key;
-    if(/^[1-5]$/.test(k)){ activeTab = SHORTCUT_TABS[parseInt(k,10)-1]; render(); e.preventDefault(); }
+    if(/^[1-6]$/.test(k)){ activeTab = SHORTCUT_TABS[parseInt(k,10)-1]; render(); e.preventDefault(); }
     else if(k==='n'||k==='N'){ activeTab='insertar'; render(); e.preventDefault(); }
     else if(k==='/'){ activeTab='movs'; render(); setTimeout(()=>{ const q=document.getElementById('mvQ'); if(q) q.focus(); },30); e.preventDefault(); }
     else if(k==='?'){ showShortcuts(); e.preventDefault(); }
@@ -3929,12 +4073,14 @@
     $tabbarWrap.style.display = 'flex'; document.body.classList.remove('nosidebar');
     document.body.classList.toggle('wide', activeTab==='anual' || activeTab==='dashboard' || activeTab==='movs');
     document.body.className = document.body.className.replace(/\btab-\w+/g,'').trim(); document.body.classList.add('tab-'+activeTab);
+    ensureSuggestions();
     renderTabbar();
     if(activeTab==='resumen') renderResumen();
     else if(activeTab==='insertar') renderInsertar();
     else if(activeTab==='dashboard') renderDashboard();
     else if(activeTab==='anual') renderAnual();
     else if(activeTab==='movs') renderMovs();
+    else if(activeTab==='pend') renderPend();
     else renderAjustes();
   }
 
