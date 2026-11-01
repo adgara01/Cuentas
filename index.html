@@ -765,7 +765,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
-  const APP_VERSION = '2026.11.01-2';
+  const APP_VERSION = '2026.11.02-1';
   const DEFAULT_STATE = {
     onboarded: false,
     accounts: [
@@ -824,6 +824,14 @@
   }
   const euro = n => (n<0?'−':'') + fmt(Math.abs(n)) + '€';
   const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+  // momento real de creación de un movimiento (ms): usa `ts` y, si no hay, lo deduce del id (el Atajo usa ms en decimal; la app, en base 36)
+  function txOrd(t){
+    if(t.ts) return +t.ts || 0;
+    const id = String(t.id||'');
+    if(/^\d{13}/.test(id)) return parseInt(id.slice(0,13),10);
+    const v = parseInt(id.slice(0,8),36);
+    return isNaN(v) ? 0 : v;
+  }
   const accName = id => { const a = state.accounts.find(x=>x.id===id); return a ? a.name : id; };
 
   let STORAGE_KEY = 'cuentas-data-v1';
@@ -1165,7 +1173,7 @@
   function movBalanceMap(){
     const bal = {}; state.accounts.forEach(a=>{ bal[a.id]=a.initial||0; });
     const out = {};
-    const ord = state.transactions.map((t,i)=>[t,i]).sort((x,y)=> x[0].date<y[0].date?-1 : x[0].date>y[0].date?1 : x[1]-y[1]);
+    const ord = state.transactions.map((t,i)=>[t,i]).sort((x,y)=> x[0].date<y[0].date?-1 : x[0].date>y[0].date?1 : (txOrd(x[0])-txOrd(y[0])) || (x[1]-y[1]));
     ord.forEach(([t])=>{
       const info = {};
       const mark = (id,delta,key)=>{
@@ -1675,7 +1683,7 @@
       return transactableAccounts().filter(a=>a.id!==excludeId).map(a=>`<option value="${a.id}" ${a.id===sel?'selected':''}>${a.name}</option>`).join('');
     }
     function historyHtml(){
-      const tx = [...state.transactions].sort((a,b)=> b.date.localeCompare(a.date) || b.id.localeCompare(a.id)).slice(0,25);
+      const tx = [...state.transactions].sort((a,b)=> b.date.localeCompare(a.date) || txOrd(b)-txOrd(a)).slice(0,25);
       if(!tx.length) return `<div class="empty-note">Todavía no hay movimientos.</div>`;
       return tx.map(t=>{
         const dotClass = t.type==='Gasto'?'gasto':(t.type==='Ingreso'?'ingreso':'mov');
@@ -1793,7 +1801,7 @@
         const extraEl = document.getElementById('tx-extra');
 
         const record = {
-          id: uid(), type, account,
+          id: uid(), ts: Date.now(), type, account,
           toAccount: type==='Movimiento' ? toAccount : undefined,
           category: type==='Movimiento' ? (state.accounts.find(a=>a.id===toAccount)?.type==='ahorro' ? 'Ahorro' : 'Transferencia') : category,
           amount: amountVal, comment, date,
@@ -2116,7 +2124,7 @@
     </div>`;
 
     // ---- lista filtrada ----
-    tx.sort((a,b)=> b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+    tx.sort((a,b)=> b.date.localeCompare(a.date) || txOrd(b)-txOrd(a));
     const groups = {};
     tx.forEach(t=>{ groups[t.date] = groups[t.date]||[]; groups[t.date].push(t); });
     const dates = Object.keys(groups).sort().reverse();
@@ -3519,7 +3527,7 @@
     });
     const key = movF.sort, dir = movF.dir;
     const val = t => key==='amount' ? t.amount : key==='account' ? accName(t.account).toLowerCase() : key==='category' ? (t.category||'').toLowerCase() : key==='type' ? t.type : key==='comment' ? (t.comment||'').toLowerCase() : t.date;
-    arr.sort((a,b)=>{ const x=val(a), y=val(b); if(x<y) return -1*dir; if(x>y) return 1*dir; return (a.id<b.id?-1:1)*dir; });
+    arr.sort((a,b)=>{ const x=val(a), y=val(b); if(x<y) return -1*dir; if(x>y) return 1*dir; return ((txOrd(a)-txOrd(b)) || (a.id<b.id?-1:1))*dir; });
     return arr;
   }
   function downloadText(filename, text, mime){
