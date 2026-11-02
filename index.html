@@ -1021,13 +1021,35 @@ html[data-design="flow"] .battery-bar-fill{background:linear-gradient(90deg,var(
 .pend-banner{border-radius:28px;}
 .btn-primary,.btn-secondary,.btn-ghost,.side-create{border-radius:999px;}
 .seg,.auth-tabs,.seg button,.auth-tabs button{border-radius:999px;}
-.field input,.field select,.field textarea,.bud-nav select,.bud-num,.cat-budget-num,.anual-from select,.pend-act select{border-radius:16px;}
-.ft-box,.range-readout,.movs-bulk,.pend-sug button,.pend-act button{border-radius:18px;}
+html{--rad:24px;--pad:18px;--rin:10px;}
+.cell,.chart-wrap,.sheet,.auth-card{--rin:max(10px,calc(var(--rad) - var(--pad)));}
+/* radio interior = radio exterior − relleno (esquinas concéntricas) */
+.cell,.chart-wrap{border-radius:var(--rad);}
+.field input,.field select,.field textarea,.bud-nav select,.bud-num,.cat-budget-num,.anual-from select,.pend-act select,.ft-box,.range-readout,.movs-bulk,.pend-sug button,.pend-act button,.dsg-opt .dsg-sw{border-radius:var(--rin);}
+html[data-design="google"] .field input,html[data-design="google"] .field select{border-radius:var(--rin);}
+.cell .pivot-wrap,.cell .plan-table-wrap{border-radius:var(--rin);}
+.dsg-opt{border-radius:calc(var(--rin) + 8px);} .dsg-opt .dsg-sw{border-radius:10px;}
+.sheet{--pad:22px;}
+html[data-design="ios"] .tab-btn{border-radius:27px;}
+html[data-design="flow"] .tab-btn{border-radius:23px;}
 .sheet{border-radius:32px 32px 0 0;}
 .overlay .sheet,html[data-design] .overlay .sheet{border-radius:30px;}
 @media (max-width:999px){.overlay .sheet,html[data-design] .overlay .sheet{border-radius:32px 32px 0 0;}}
 .auth-card,.ob-acc{border-radius:28px;}
 input[type=checkbox]{-webkit-appearance:none;appearance:none;width:22px;height:22px;border-radius:50%;border:2px solid var(--muted);background:transparent;display:inline-grid;place-content:center;cursor:pointer;flex-shrink:0;vertical-align:middle;transition:background-color .2s,border-color .2s,transform .25s cubic-bezier(.3,1.7,.5,1);}
+/* iconos de línea, grises */
+.ic{vertical-align:-4px;flex-shrink:0;color:var(--muted);}
+.set-ico{display:inline-flex;align-items:center;justify-content:center;font-size:0;}
+.set-h{display:flex;align-items:center;gap:10px;}
+.pend-banner .ic{color:currentColor;opacity:.75;vertical-align:-3px;}
+.pin-keys button .ic{color:var(--ink-soft);}
+.side-keys .ic{margin-right:4px;}
+.pb-t{font-weight:inherit;display:inline-flex;align-items:center;gap:8px;}
+.set-badge{background:var(--amber-bg);color:var(--amber);font-weight:800;font-size:12px;border-radius:999px;padding:2px 9px;}
+.ver-line{font-size:12.5px;color:var(--muted);font-weight:600;margin:0 0 10px;}
+/* sin cursor parpadeante al hacer clic en textos */
+body{-webkit-user-select:none;user-select:none;caret-color:transparent;}
+input,textarea,select{-webkit-user-select:text;user-select:text;caret-color:auto;}
 .check-row input[type="checkbox"]{width:22px;height:22px;}
 input[type=checkbox]::after{content:'';width:10px;height:5px;border-left:2.5px solid var(--on-acc,#fff);border-bottom:2.5px solid var(--on-acc,#fff);transform:rotate(-45deg) scale(0);margin-top:-2px;transition:transform .22s cubic-bezier(.3,1.7,.5,1);}
 input[type=checkbox]:checked{background:var(--acc,var(--green));border-color:var(--acc,var(--green));}
@@ -1114,7 +1136,7 @@ html[data-design] #app.enter :is(.acc-cell,.mv-line,.hist-row,.set-nav-item):nth
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
-  const APP_VERSION = '2026.11.02-4';
+  const APP_VERSION = '2026.11.02-5';
   const DEFAULT_STATE = {
     onboarded: false,
     accounts: [
@@ -1427,7 +1449,6 @@ html[data-design] #app.enter :is(.acc-cell,.mv-line,.hist-row,.set-nav-item):nth
           <div><span class="catbudget-summary-lbl">Repartido</span> <span class="mono" id="catBudgetAssigned">${fmt(assignedTotal())}€</span></div>
           <div><span class="catbudget-summary-lbl">Queda</span> <span class="mono" id="catBudgetRemaining" style="color:${assignedTotal()>budget?'var(--red)':'var(--green)'};">${fmt(budget-assignedTotal())}€</span></div>
         </div>
-        <div class="empty-note" style="padding:10px 0 14px;text-align:left;">Arrastra para repartir tu presupuesto de gasto (${fmt(budget)}€) entre categorías — nunca te dejará pasarte. Si quieres ir al detalle, toca el número.</div>
         ${state.categories.map(c=>{
           const v = parseFloat(cb[c])||0;
           const pct = budget>0 ? (v/budget)*100 : 0;
@@ -1685,7 +1706,7 @@ html[data-design] #app.enter :is(.acc-cell,.mv-line,.hist-row,.set-nav-item):nth
     placeNavInd();
     if(desktop){
       const foot = document.createElement('div'); foot.className = 'side-foot';
-      foot.innerHTML = '<button class="side-keys" id="sideKeys">⌨ Atajos de teclado <kbd class="kk">?</kbd></button>' + (me ? '@'+me.username+'<br>' : '') + 'v'+APP_VERSION;
+      foot.innerHTML = '<button class="side-keys" id="sideKeys">'+ico('keyboard',16)+' Atajos de teclado <kbd class="kk">?</kbd></button>' + (me ? '@'+me.username+'<br>' : '') + 'v'+APP_VERSION;
       $tabbar.parentNode.appendChild(foot);
       const sk = document.getElementById('sideKeys'); if(sk) sk.onclick = showShortcuts;
     }
@@ -1979,7 +2000,7 @@ html[data-design] #app.enter :is(.acc-cell,.mv-line,.hist-row,.set-nav-item):nth
     if(ch) saveState();
   }
   const pendingList = ()=> state.transactions.filter(t=>t.pending).sort((a,b)=> b.date.localeCompare(a.date) || (b.ts||0)-(a.ts||0));
-  const pendBannerHtml = ()=>{ const n = pendingList().length; return n ? `<div class="pend-banner" id="pendBanner">⏳ ${n} pago${n>1?'s':''} por confirmar <span>Revisar →</span></div>` : ''; };
+  const pendBannerHtml = ()=>{ const n = pendingList().length; return n ? `<div class="pend-banner" id="pendBanner"><b class="pb-t">${ico('hourglass',16)} ${n} pago${n>1?'s':''} por confirmar</b><span>Revisar →</span></div>` : ''; };
   function wirePendBanner(){ const b = document.getElementById('pendBanner'); if(b) b.onclick = ()=>{ activeTab='pend'; render(); }; }
   function learnNote(t, comment){
     if(!t.merchant) return;
@@ -2004,7 +2025,7 @@ html[data-design] #app.enter :is(.acc-cell,.mv-line,.hist-row,.set-nav-item):nth
     const accs = state.accounts.filter(a=>!a.manual);
     let html = headerHtml('Pendientes');
     html += `<div class="pend-hint">Pagos con Apple Pay por confirmar. Al elegir la categoría, Cuentas aprende ese comercio y la próxima vez lo apunta solo.</div>`;
-    if(!list.length) html += `<div class="empty-note">Todo al día. No hay pagos por confirmar. 🎉</div>`;
+    if(!list.length) html += `<div class="empty-note">Todo al día. No hay pagos por confirmar.</div>`;
     list.forEach(t=>{
       const sug = t.suggest && t.category===t.suggest;
       html += `<div class="cell pend-card" data-id="${t.id}">
@@ -2859,13 +2880,26 @@ html[data-design] #app.enter :is(.acc-cell,.mv-line,.hist-row,.set-nav-item):nth
   const CARD_SEC = { sync:'cuenta', lock:'cuenta', apariencia:'app', diseno:'app', acento:'app', actualizacion:'app', payday:'presupuesto', presupuesto:'presupuesto',
     categorias:'categorias', grupos:'categorias', cuentasEditar:'cuentas', cuentas:'cuentas', pagos:'cuentas',
     preset:'datos', logGasto:'datos', logIngreso:'datos', export:'datos' };
+  const ICO_P = {
+    user:'<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/>',
+    target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2"/>',
+    tag:'<path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.3"/>',
+    bank:'<path d="M3 10l9-6 9 6"/><path d="M5.5 10v8M10 10v8M14 10v8M18.5 10v8"/><path d="M3 21h18"/>',
+    sliders:'<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>',
+    chart:'<path d="M5 20v-7M12 20V5M19 20V10"/>',
+    hourglass:'<path d="M6 3h12M6 21h12M7 3c0 5 5 6 5 9s-5 4-5 9M17 3c0 5-5 6-5 9s5 4 5 9"/>',
+    pencil:'<path d="M4 20l1-4L16 5l3 3L8 19z"/>',
+    keyboard:'<rect x="2.5" y="6" width="19" height="12" rx="3"/><path d="M7 10h.01M10.5 10h.01M14 10h.01M17.5 10h.01M7.5 14h9"/>',
+    backspace:'<path d="M9 5h11a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H9l-6-7z"/><path d="M13 9.5l4 4M17 9.5l-4 4"/>'
+  };
+  function ico(n, z){ z = z||22; return '<svg class="ic" viewBox="0 0 24 24" width="'+z+'" height="'+z+'" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+ICO_P[n]+'</svg>'; }
   const SET_SECS = [
-    { k:'cuenta', ico:'👤', t:'Mi cuenta', d:'Usuario, correo, PIN y Face ID' },
-    { k:'presupuesto', ico:'🎯', t:'Presupuesto', d:'Ingreso, ahorro y gasto por categoría' },
-    { k:'categorias', ico:'🏷️', t:'Categorías', d:'Categorías y grupos del resumen' },
-    { k:'cuentas', ico:'🏦', t:'Cuentas y tarjetas', d:'Saldos, tipos y Apple Pay' },
-    { k:'app', ico:'⚙️', t:'Aplicación', d:'Apariencia y actualizaciones' },
-    { k:'datos', ico:'📊', t:'Datos', d:'Filtro rápido, registros y exportar' },
+    { k:'cuenta', ico:'user', t:'Mi cuenta' },
+    { k:'presupuesto', ico:'target', t:'Presupuesto' },
+    { k:'categorias', ico:'tag', t:'Categorías' },
+    { k:'cuentas', ico:'bank', t:'Cuentas y tarjetas' },
+    { k:'app', ico:'sliders', t:'Aplicación' },
+    { k:'datos', ico:'chart', t:'Datos' },
   ];
   function collapsibleCard(key, title, bodyHtml){
     const sec = CARD_SEC[key] || 'datos';
@@ -3025,9 +3059,9 @@ html[data-design] #app.enter :is(.acc-cell,.mv-line,.hist-row,.set-nav-item):nth
     const secInfo = SET_SECS.find(x=>x.k===curSetSec);
     let html = headerHtml('Objetivos y ajustes') + `<div class="set-wrap ${curSetSec?'in':'menu'}">`;
     const pendN = pendingList().length;
-    html += `<div class="set-nav">` + (isDeskSet ? '' : `<button class="set-nav-item" id="setPend"><span class="set-ico">⏳</span><span class="set-txt"><b>Pendientes</b><small>Pagos de Apple Pay por confirmar${pendN?' · '+pendN:''}</small></span><span class="set-arr">›</span></button>`) + SET_SECS.map(x=>`<button class="set-nav-item ${x.k===curSetSec?'on':''}" data-sec="${x.k}"><span class="set-ico">${x.ico}</span><span class="set-txt"><b>${x.t}</b><small>${x.d}</small></span><span class="set-arr">›</span></button>`).join('') + `</div>`;
+    html += `<div class="set-nav">` + (isDeskSet ? '' : `<button class="set-nav-item" id="setPend"><span class="set-ico">${ico('hourglass')}</span><span class="set-txt"><b>Pendientes</b></span>${pendN?`<span class="set-badge">${pendN}</span>`:''}<span class="set-arr">›</span></button>`) + SET_SECS.map(x=>`<button class="set-nav-item ${x.k===curSetSec?'on':''}" data-sec="${x.k}"><span class="set-ico">${ico(x.ico)}</span><span class="set-txt"><b>${x.t}</b></span><span class="set-arr">›</span></button>`).join('') + `</div>`;
     html += `<div class="set-main">`;
-    if(secInfo) html += `<button class="set-back" id="setBack">‹ Ajustes</button><div class="set-h">${secInfo.ico} ${secInfo.t}</div>`;
+    if(secInfo) html += `<button class="set-back" id="setBack">‹ Ajustes</button><div class="set-h">${ico(secInfo.ico,22)} ${secInfo.t}</div>`;
 
     html += collapsibleCard('sync', 'Mi cuenta', `
         <div class="exp-row" style="border-top:none;padding-top:0;">
@@ -3055,7 +3089,6 @@ html[data-design] #app.enter :is(.acc-cell,.mv-line,.hist-row,.set-nav-item):nth
       state.transactions.forEach(t=>{ if(t.card) seen.add(normName(t.card)); });
       const rules = Object.entries(state.merchantRules||{}).sort((a,b)=>a[0].localeCompare(b[0]));
       html += collapsibleCard('pagos', 'Pagos con Apple Pay', `
-        <div class="empty-note" style="text-align:left;padding:0 0 10px;">Enlaza cada tarjeta de Cartera con su cuenta. Así cada pago resta de la cuenta correcta.</div>
         ${seen.size ? Array.from(seen).map(k=>`<div class="exp-row" style="gap:10px;"><div class="exp-name" style="text-transform:capitalize;">${escH(k)}</div><select data-card="${escH(k)}" style="max-width:55%;"><option value="">— sin enlazar —</option>${accsT.map(a=>`<option value="${a.id}" ${state.cardMap[k]===a.id?'selected':''}>${escH(a.name)}</option>`).join('')}</select></div>`).join('') : '<div class="empty-note">Todavía no hay tarjetas. Aparecen solas con el primer pago, o añádelas aquí.</div>'}
         <div class="two-col" style="margin-top:10px;align-items:end;"><div class="field" style="margin:0;"><input type="text" id="cardNew" placeholder="Tarjeta, como sale en Cartera" autocapitalize="off"></div><button class="btn-ghost" id="cardAdd">Añadir tarjeta</button></div>
         <div class="section-title" style="margin:18px 0 4px;">Comercios aprendidos (${rules.length})</div>
@@ -3067,7 +3100,6 @@ html[data-design] #app.enter :is(.acc-cell,.mv-line,.hist-row,.set-nav-item):nth
     }
 
     html += collapsibleCard('apariencia', 'Apariencia', `
-      <div class="empty-note" style="padding:0 0 12px;text-align:left;">Automático sigue el modo de tu dispositivo. Se guarda solo en este dispositivo.</div>
       <div class="seg" id="themeSeg" style="margin-bottom:0;">
         <button data-th="auto" class="${getTheme()==='auto'?'active':''}">Automático</button>
         <button data-th="light" class="${getTheme()==='light'?'active':''}">Claro</button>
@@ -3076,14 +3108,12 @@ html[data-design] #app.enter :is(.acc-cell,.mv-line,.hist-row,.set-nav-item):nth
     `);
 
     html += collapsibleCard('diseno', 'Diseño', `
-      <div class="empty-note" style="padding:0 0 12px;text-align:left;">Cambia el aspecto de toda la app. Se guarda solo en este dispositivo y puedes volver al clásico cuando quieras.</div>
       <div class="dsg-grid" id="dsgGrid">
-        ${DESIGNS.map(x=>`<button class="dsg-opt ${getDesign()===x.k?'on':''}" data-d="${x.k}"><div class="dsg-sw ${x.sw}"></div><b>${x.n}</b><small>${x.d}</small></button>`).join('')}
+        ${DESIGNS.map(x=>`<button class="dsg-opt ${getDesign()===x.k?'on':''}" data-d="${x.k}"><div class="dsg-sw ${x.sw}"></div><b>${x.n}</b></button>`).join('')}
       </div>
     `);
 
     html += collapsibleCard('acento', 'Color de acento', `
-      <div class="empty-note" style="padding:0 0 12px;text-align:left;">El color principal de botones, pestañas y gráficos. Vale para todos los diseños.</div>
       <div class="acc-sw" id="accSw">
         <button class="acc-dot auto ${getAccent()==='auto'?'on':''}" data-c="auto" title="El del diseño" aria-label="El del diseño"></button>
         ${ACCENTS.map(c=>`<button class="acc-dot ${getAccent().toLowerCase()===c[0].toLowerCase()?'on':''}" data-c="${c[0]}" title="${c[1]}" aria-label="${c[1]}" style="--c:${c[0]}"></button>`).join('')}
@@ -3092,13 +3122,12 @@ html[data-design] #app.enter :is(.acc-cell,.mv-line,.hist-row,.set-nav-item):nth
     `);
 
     html += collapsibleCard('actualizacion', 'Actualizaciones', `
-      <div class="empty-note" style="padding:0 0 12px;text-align:left;">Versión ${APP_VERSION}. La app busca una versión nueva cada vez que se abre desde cero. Si algo no se ve bien, fuerza la actualización.</div>
+      <div class="ver-line">Versión ${APP_VERSION}</div>
       <button class="btn-ghost" id="updCheck">Buscar actualización</button>
       <button class="btn-ghost" id="updForce" style="margin-top:8px;">Forzar actualización (borra la caché)</button>
     `);
 
     html += collapsibleCard('cuentasEditar', 'Cuentas', `
-      <div class="empty-note" style="padding:0 0 12px;text-align:left;">Toca una cuenta para renombrarla, eliminarla o cambiar su tipo.</div>
       <div class="acc-manage-header">
         <span></span>
         <div class="am-tag-group">
@@ -3108,7 +3137,7 @@ html[data-design] #app.enter :is(.acc-cell,.mv-line,.hist-row,.set-nav-item):nth
       </div>
       ${state.accounts.map(a=>`
         <div class="acc-manage-row acc-manage-btn" data-acc="${a.id}">
-          <div class="acc-name-btn">${a.name} <span style="color:var(--muted);">✎</span></div>
+          <div class="acc-name-btn">${a.name} <span style="color:var(--muted);">${ico('pencil',13)}</span></div>
           <div class="am-tag-group">
             <span class="am-tag">${a.type==='ahorro'?'Ahorro':'Corriente'}</span>
             <span class="am-tag">${a.manual?'Manual':'Automática'}</span>
@@ -3119,7 +3148,6 @@ html[data-design] #app.enter :is(.acc-cell,.mv-line,.hist-row,.set-nav-item):nth
     `);
 
     html += collapsibleCard('cuentas', 'Punto de partida', `
-      <div class="empty-note" style="padding:0 0 12px;text-align:left;">El saldo desde el que empieza a calcular cada cuenta.</div>
       ${state.accounts.map(a=>`
         <div class="acc-manage-row">
           <div><div class="am-name">${a.name}</div><div class="am-type">${a.manual?'manual':a.type} · ${a.manual?'valor actual':'saldo inicial'} ${fmt(a.manual?a.manualBalance:a.initial)}€</div></div>
@@ -3129,7 +3157,6 @@ html[data-design] #app.enter :is(.acc-cell,.mv-line,.hist-row,.set-nav-item):nth
     `);
 
     html += collapsibleCard('categorias', 'Categorías', `
-      <div class="empty-note" style="padding:0 0 10px;text-align:left;">Toca una para cambiarle el nombre, o añade las que quieras.</div>
       <div class="filter-label">Gastos</div>
       <div class="filter-chip-row" id="renameGastoChips">
         ${state.categories.map((c,i)=>`<div class="fchip" data-list="categories" data-idx="${i}">${c}</div>`).join('')}
@@ -3143,11 +3170,10 @@ html[data-design] #app.enter :is(.acc-cell,.mv-line,.hist-row,.set-nav-item):nth
     `);
 
     html += collapsibleCard('grupos', 'Grupos de gasto en resumen', `
-      <div class="empty-note" style="padding:0 0 14px;text-align:left;">Así se agrupan tus categorías en el gráfico "Gastos por grupo" de Resumen. Lo que no metas en ningún grupo cae en "Otros".</div>
       ${state.expenseGroups.map((g,gi)=>`
         <div class="group-edit-block">
           <div class="compact-row" style="margin-bottom:10px;">
-            <div class="group-name-btn" data-gidx="${gi}">${g.name} <span style="color:var(--muted);">✎</span></div>
+            <div class="group-name-btn" data-gidx="${gi}">${g.name} <span style="color:var(--muted);">${ico('pencil',13)}</span></div>
             <span class="row-del group-del-btn" data-gidx="${gi}">✕</span>
           </div>
           <div class="filter-chip-row">
@@ -3161,7 +3187,6 @@ html[data-design] #app.enter :is(.acc-cell,.mv-line,.hist-row,.set-nav-item):nth
     html += collapsibleCard('payday', 'Día de cobro', `
       <div class="compact-row">
         <div style="flex:1;min-width:0;">
-          <div class="empty-note" style="padding:0;text-align:left;">Define el periodo "Nómina" del Dashboard y de los gráficos de Resumen.</div>
         </div>
         <input class="mono compact-input" type="number" min="1" max="31" step="1" id="paydayInput" value="${state.paydayDay||1}">
       </div>
@@ -3170,7 +3195,6 @@ html[data-design] #app.enter :is(.acc-cell,.mv-line,.hist-row,.set-nav-item):nth
     html += collapsibleCard('presupuesto', 'Presupuesto por nómina', `<div id="budBody"></div>`);
 
     html += collapsibleCard('preset', 'Preset de filtros', `
-      <div class="empty-note" style="padding:0 0 14px;text-align:left;">Combinación de filtros que aparece como botón rápido junto a "Tipo" en el Dashboard.</div>
       <div class="filter-label" style="margin-top:0;">Tipo</div>
       <div class="filter-chip-row">
         ${['Gasto','Ingreso','Movimiento'].map(t=>`<div class="fchip preset-edit-chip ${state.filterPreset.types.includes(t)?'active':''}" data-field="types" data-val="${t}">${t}</div>`).join('')}
@@ -3218,7 +3242,6 @@ html[data-design] #app.enter :is(.acc-cell,.mv-line,.hist-row,.set-nav-item):nth
     html += collapsibleCard('export', 'Exportar a Excel', `
       <div class="field"><label>Correo para enviarlo</label><input type="email" id="exportEmail" value="${state.exportEmail||''}" placeholder="tucorreo@ejemplo.com"></div>
       <button class="btn-primary" id="exportBtn">Descargar y preparar correo</button>
-      <div class="empty-note" style="padding:8px 0 0;">Descarga un .xlsx con "Movimientos" y "Resumen mensual", y abre un borrador de correo con el destinatario puesto — el archivo hay que adjuntarlo a mano, esta app no puede enviarlo sola.</div>
     `);
 
     html += '</div></div>';
@@ -4036,7 +4059,6 @@ html[data-design] #app.enter :is(.acc-cell,.mv-line,.hist-row,.set-nav-item):nth
       };
       $('mvBCat').onclick = ()=>{
         $sheet.innerHTML = `<h2>Cambiar categoría <span class="close-x" id="mcX">✕</span></h2>
-          <div class="empty-note" style="padding:0 0 10px;text-align:left;">Se aplica a los ${ids.length} movimientos seleccionados. Los gastos solo admiten categorías de gasto y los ingresos, de ingreso; los movimientos entre cuentas no se tocan.</div>
           <div class="field"><label>Gastos → categoría</label><div class="chip-row" id="mcG">${state.categories.map(c=>`<div class="chip" data-c="${escH(c)}">${escH(c)}</div>`).join('')}</div></div>
           <div class="field"><label>Ingresos → categoría</label><div class="chip-row" id="mcI">${state.incomeCategories.map(c=>`<div class="chip" data-c="${escH(c)}">${escH(c)}</div>`).join('')}</div></div>`;
         $overlay.classList.add('show');
@@ -4109,7 +4131,7 @@ html[data-design] #app.enter :is(.acc-cell,.mv-line,.hist-row,.set-nav-item):nth
         <div class="pin-top"><img src="${LOGO_URL()}" alt=""><div class="pin-title">${o.title||''}</div><div class="pin-sub" id="pinSub">${o.sub||''}</div></div>
         <div class="pin-dots" id="pinDots">${Array.from({length:o.len}).map(()=>'<i></i>').join('')}</div>
         <div class="pin-err" id="pinErr"></div>
-        <div class="pin-keys">${keys.map(k=> k==='' ? '<span></span>' : k==='del' ? '<button data-k="del" aria-label="Borrar">⌫</button>' : k==='bio' ? '<button data-k="bio" aria-label="Face ID">'+(o.bioLabel||'Face ID')+'</button>' : `<button data-k="${k}">${k}</button>`).join('')}</div>
+        <div class="pin-keys">${keys.map(k=> k==='' ? '<span></span>' : k==='del' ? '<button data-k="del" aria-label="Borrar">'+ico('backspace',26)+'</button>' : k==='bio' ? '<button data-k="bio" aria-label="Face ID">'+(o.bioLabel||'Face ID')+'</button>' : `<button data-k="${k}">${k}</button>`).join('')}</div>
         <div class="pin-foot">${o.cancelable ? '<button class="pin-link" id="pinCancel">Cancelar</button>' : ''}${o.forgot ? '<button class="pin-link" id="pinForgot">¿Has olvidado el PIN?</button>' : ''}</div>`;
       document.body.appendChild(el);
       const dots = el.querySelectorAll('#pinDots i'), err = el.querySelector('#pinErr');
@@ -4232,7 +4254,6 @@ html[data-design] #app.enter :is(.acc-cell,.mv-line,.hist-row,.set-nav-item):nth
   function lockCardHtml(){
     const c = lockCfg();
     if(!(c && c.hash)) return `
-      <div class="empty-note" style="padding:0 0 12px;text-align:left;">Pon un PIN para que nadie pueda abrir Cuentas en este dispositivo aunque tenga el móvil o el ordenador desbloqueado. Es solo para este dispositivo. Después puedes añadir Face ID.</div>
       <button class="btn-primary" id="lkOn">Activar PIN</button>`;
     return `
       <div class="exp-row" style="border-top:none;padding-top:0;"><div class="exp-name">PIN</div><div style="font-weight:700;color:var(--green);">Activado · ${c.len||4} dígitos</div></div>
