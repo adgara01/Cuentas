@@ -1151,7 +1151,7 @@ html[data-design] #app.enter :is(.acc-cell,.mv-line,.hist-row,.set-nav-item):nth
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
-  const APP_VERSION = '2026.11.02-9';
+  const APP_VERSION = '2026.11.02-10';
   const DEFAULT_STATE = {
     onboarded: false,
     accounts: [
@@ -2336,7 +2336,7 @@ html[data-design] #app.enter :is(.acc-cell,.mv-line,.hist-row,.set-nav-item):nth
     });
     lastFiscalChart = hasFiscalData ? { days: fiscalDayData } : null;
     html += `<div class="chart-wrap">
-      <div class="chart-title">Gasto diario — ${monthLabel(dayChartLabelMonth)} <span style="font-weight:400;text-transform:none;letter-spacing:0;">(toca un día para filtrar, arrastra para ver el importe)</span></div>
+      <div class="chart-title">Gasto diario — ${monthLabel(dayChartLabelMonth)}</div>
       ${hasFiscalData ? `
       <div class="day-chart-row">
         <div class="day-chart-axis">
@@ -2909,12 +2909,12 @@ html[data-design] #app.enter :is(.acc-cell,.mv-line,.hist-row,.set-nav-item):nth
   };
   function ico(n, z){ z = z||22; return '<svg class="ic" viewBox="0 0 24 24" width="'+z+'" height="'+z+'" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+ICO_P[n]+'</svg>'; }
   const SET_SECS = [
-    { k:'cuenta', ico:'user', t:'Mi cuenta' },
-    { k:'presupuesto', ico:'target', t:'Presupuesto' },
-    { k:'categorias', ico:'tag', t:'Categorías' },
-    { k:'cuentas', ico:'bank', t:'Cuentas y tarjetas' },
-    { k:'app', ico:'sliders', t:'Aplicación' },
-    { k:'datos', ico:'chart', t:'Datos' },
+    { k:'cuenta', ico:'user', t:'Mi cuenta', d:'Usuario, correo, PIN y Face ID' },
+    { k:'presupuesto', ico:'target', t:'Presupuesto', d:'Ingreso, ahorro y gasto por categoría' },
+    { k:'categorias', ico:'tag', t:'Categorías', d:'Categorías y grupos del resumen' },
+    { k:'cuentas', ico:'bank', t:'Cuentas y tarjetas', d:'Saldos, tipos y Apple Pay' },
+    { k:'app', ico:'sliders', t:'Aplicación', d:'Apariencia y actualizaciones' },
+    { k:'datos', ico:'chart', t:'Datos', d:'Filtro rápido, registros y exportar' },
   ];
   function collapsibleCard(key, title, bodyHtml){
     const sec = CARD_SEC[key] || 'datos';
@@ -3074,7 +3074,7 @@ html[data-design] #app.enter :is(.acc-cell,.mv-line,.hist-row,.set-nav-item):nth
     const secInfo = SET_SECS.find(x=>x.k===curSetSec);
     let html = headerHtml('Objetivos y ajustes') + `<div class="set-wrap ${curSetSec?'in':'menu'}">`;
     const pendN = pendingList().length;
-    html += `<div class="set-nav">` + (isDeskSet ? '' : `<button class="set-nav-item" id="setPend"><span class="set-ico">${ico('hourglass')}</span><span class="set-txt"><b>Pendientes</b></span>${pendN?`<span class="set-badge">${pendN}</span>`:''}<span class="set-arr">›</span></button>`) + SET_SECS.map(x=>`<button class="set-nav-item ${x.k===curSetSec?'on':''}" data-sec="${x.k}"><span class="set-ico">${ico(x.ico)}</span><span class="set-txt"><b>${x.t}</b></span><span class="set-arr">›</span></button>`).join('') + `</div>`;
+    html += `<div class="set-nav">` + (isDeskSet ? '' : `<button class="set-nav-item" id="setPend"><span class="set-ico">${ico('hourglass')}</span><span class="set-txt"><b>Pendientes</b><small>Pagos de Apple Pay por confirmar${pendN?' · '+pendN:''}</small></span>${pendN?`<span class="set-badge">${pendN}</span>`:''}<span class="set-arr">›</span></button>`) + SET_SECS.map(x=>`<button class="set-nav-item ${x.k===curSetSec?'on':''}" data-sec="${x.k}"><span class="set-ico">${ico(x.ico)}</span><span class="set-txt"><b>${x.t}</b><small>${x.d||''}</small></span><span class="set-arr">›</span></button>`).join('') + `</div>`;
     html += `<div class="set-main">`;
     if(secInfo) html += `<button class="set-back" id="setBack">‹ Ajustes</button><div class="set-h">${ico(secInfo.ico,22)} ${secInfo.t}</div>`;
 
