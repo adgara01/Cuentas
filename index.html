@@ -711,6 +711,8 @@
   .pin-keys button:active{background:var(--green-bg);} .pin-keys button[data-k=bio],.pin-keys button[data-k=del]{background:transparent;box-shadow:none;font-size:13px;font-weight:700;color:var(--ink-soft);}
   .pin-keys button[data-k=del]{font-size:24px;}
   .pinpad.waiting .pin-keys{opacity:.4;}
+  .pinpad,.pinpad *{touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
+  .pin-keys button{transition:none!important;animation:none!important;}
   .pin-foot{display:flex;gap:18px;min-height:30px;} .pin-link{background:none;border:0;color:var(--green);font:inherit;font-weight:700;font-size:13.5px;cursor:pointer;}
   .ana-list{padding:4px 8px 6px;}
   .ana-row{display:grid;grid-template-columns:34px 1fr 104px;gap:8px;align-items:center;padding:7px 0;border-top:1px solid var(--line);}
@@ -1149,7 +1151,7 @@ html[data-design] #app.enter :is(.acc-cell,.mv-line,.hist-row,.set-nav-item):nth
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
-  const APP_VERSION = '2026.11.02-7';
+  const APP_VERSION = '2026.11.02-8';
   const DEFAULT_STATE = {
     onboarded: false,
     accounts: [
@@ -4179,11 +4181,22 @@ html[data-design] #app.enter :is(.acc-cell,.mv-line,.hist-row,.set-nav-item):nth
       }
       function onKey(e){ if(/^[0-9]$/.test(e.key)) press(e.key); else if(e.key==='Backspace') press('del'); }
       document.addEventListener('keydown', onKey);
-      el.querySelectorAll('.pin-keys button').forEach(b=> b.onclick = ()=>press(b.dataset.k));
+      el.querySelectorAll('.pin-keys button').forEach(b=>{
+        // respuesta inmediata: se actúa al tocar (pointerdown), sin esperar al "click" ni al doble toque de iOS
+        b.addEventListener('pointerdown', e=>{ e.preventDefault(); b._pd = Date.now(); press(b.dataset.k); });
+        b.addEventListener('click', e=>{ if(b._pd && Date.now()-b._pd < 700) return; press(b.dataset.k); }); // teclado / accesibilidad
+      });
       const c = el.querySelector('#pinCancel'); if(c) c.onclick = ()=>finish(null);
       const f = el.querySelector('#pinForgot'); if(f) f.onclick = ()=>o.forgot(finish);
       tickWait();
-      if(o.autoBio) o.onBio(finish, true);
+      if(o.autoBio){
+        o.onBio(finish, true).then(ok=>{
+          if(ok) return;
+          // iOS a veces exige un toque del usuario: el primer toque en cualquier sitio que no sea un número lo lanza
+          const arm = ev=>{ if(ev.target.closest && ev.target.closest('.pin-keys button:not([data-k=bio])')) return; el.removeEventListener('pointerdown', arm); o.onBio(finish, true); };
+          el.addEventListener('pointerdown', arm);
+        });
+      }
     });
   }
 
@@ -4196,7 +4209,7 @@ html[data-design] #app.enter :is(.acc-cell,.mv-line,.hist-row,.set-nav-item):nth
     await pad({
       title:'Introduce tu PIN', sub:'@'+(me?me.username:''), len:c0.len||4, bio:bioOn, autoBio:bioOn,
       waitUntil: ()=> (lockCfg()||{}).until || 0,
-      onBio: async (finish, silent)=>{ if(await bioUnlock()) finish('bio'); else if(!silent) showToast('No se ha podido usar Face ID'); },
+      onBio: async (finish, silent)=>{ if(await bioUnlock()){ finish('bio'); return true; } if(!silent) showToast('No se ha podido usar Face ID'); return false; },
       onSubmit: async (pin)=>{
         const c = lockCfg(); if(!c) return true;
         if((c.until||0) > Date.now()) return 'Espera un momento';
