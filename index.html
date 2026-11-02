@@ -1149,7 +1149,7 @@ html[data-design] #app.enter :is(.acc-cell,.mv-line,.hist-row,.set-nav-item):nth
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
-  const APP_VERSION = '2026.11.02-6';
+  const APP_VERSION = '2026.11.02-7';
   const DEFAULT_STATE = {
     onboarded: false,
     accounts: [
@@ -4644,8 +4644,15 @@ html[data-design] #app.enter :is(.acc-cell,.mv-line,.hist-row,.set-nav-item):nth
         const t = await sb.rpc('cuentas_username_taken', { p_name: nu });
         if(t.error) throw t.error;
         if(t.data){ sheetErr('Ese usuario ya está cogido. Prueba con otro.'); b.disabled = false; return; }
-        const { error } = await sb.from('cuentas_perfiles').update({ username: nu }).eq('id', me.id);
-        if(error) throw error;
+        let saved = false;
+        const rr = await sb.rpc('cuentas_cambiar_usuario', { p_name: nu });
+        if(!rr.error && rr.data) saved = true;
+        else if(rr.error && !/PGRST202|42883|could not find|does not exist/i.test((rr.error.code||'')+' '+(rr.error.message||''))) throw rr.error;
+        if(!saved){
+          const up = await sb.from('cuentas_perfiles').update({ username: nu }).eq('id', me.id).select();
+          if(up.error) throw up.error;
+          if(!up.data || !up.data.length) throw new Error('No se ha podido guardar el cambio en el servidor. Prueba otra vez.');
+        }
         const old = me.username;
         me = Object.assign({}, me, { username: nu });
         try{
@@ -4659,7 +4666,7 @@ html[data-design] #app.enter :is(.acc-cell,.mv-line,.hist-row,.set-nav-item):nth
         $overlay.classList.remove('show'); showToast('Ahora eres @'+nu); renderTabbar(); renderAjustes(); return;
       }catch(e){
         const m = String((e && (e.message||e.code))||'');
-        sheetErr(/duplicate|23505|unique/i.test(m) ? 'Ese usuario ya está cogido. Prueba con otro.' : translateAuthError(e));
+        sheetErr(/duplicate|23505|unique|cogido/i.test(m) ? 'Ese usuario ya está cogido. Prueba con otro.' : /No se ha podido guardar|no válido|Sin sesión|perfil/i.test(m) ? m : translateAuthError(e));
       }
       b.disabled = false;
     };
