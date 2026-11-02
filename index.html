@@ -1037,6 +1037,19 @@ html[data-design="flow"] .tab-btn{border-radius:23px;}
 @media (max-width:999px){.overlay .sheet,html[data-design] .overlay .sheet{border-radius:32px 32px 0 0;}}
 .auth-card,.ob-acc{border-radius:28px;}
 input[type=checkbox]{-webkit-appearance:none;appearance:none;width:22px;height:22px;border-radius:50%;border:2px solid var(--muted);background:transparent;display:inline-grid;place-content:center;cursor:pointer;flex-shrink:0;vertical-align:middle;transition:background-color .2s,border-color .2s,transform .25s cubic-bezier(.3,1.7,.5,1);}
+/* desplegables nativos (PC): fondo y letra legibles en claro y oscuro */
+html{color-scheme:light;}
+html[data-theme="dark"]{color-scheme:dark;}
+@media (prefers-color-scheme:dark){html:not([data-theme="light"]){color-scheme:dark;}}
+select option,select optgroup{background:var(--cell-solid,var(--cell));color:var(--ink);}
+select{color:var(--ink);}
+select option:checked{background:var(--acc-bg,var(--green-bg));color:var(--ink);}
+input[type=number]{-moz-appearance:textfield;appearance:textfield;}
+input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
+.movs-table input[type=checkbox]{width:18px;height:18px;display:block;margin:0;}
+.movs-table input[type=checkbox]::after{width:8px;height:4px;border-width:2px;}
+.extra-tag{white-space:nowrap;}
+.field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--acc,var(--green));box-shadow:0 0 0 3px var(--acc-bg,var(--green-bg));}
 /* iconos de línea, grises */
 .ic{vertical-align:-4px;flex-shrink:0;color:var(--muted);}
 .set-ico{display:inline-flex;align-items:center;justify-content:center;font-size:0;}
@@ -1136,7 +1149,7 @@ html[data-design] #app.enter :is(.acc-cell,.mv-line,.hist-row,.set-nav-item):nth
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
-  const APP_VERSION = '2026.11.02-5';
+  const APP_VERSION = '2026.11.02-6';
   const DEFAULT_STATE = {
     onboarded: false,
     accounts: [
