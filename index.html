@@ -1151,7 +1151,7 @@ html[data-design] #app.enter :is(.acc-cell,.mv-line,.hist-row,.set-nav-item):nth
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
-  const APP_VERSION = '2026.11.02-8';
+  const APP_VERSION = '2026.11.02-9';
   const DEFAULT_STATE = {
     onboarded: false,
     accounts: [
@@ -4270,12 +4270,12 @@ html[data-design] #app.enter :is(.acc-cell,.mv-line,.hist-row,.set-nav-item):nth
       onSubmit: async pin=> (await hashPin(pin, c.salt, c.iter))===c.hash ? true : 'PIN incorrecto' });
     return r!==null;
   }
-  async function toggleBio(){
+  async function toggleBio(redo){
     const c = lockCfg(); if(!c) return;
-    if(c.bio){ c.bio = false; c.credId = null; saveLockCfg(c); showToast('Face ID desactivado'); renderAjustes(); return; }
+    if(c.bio && !redo){ c.bio = false; c.credId = null; saveLockCfg(c); showToast('Face ID desactivado'); renderAjustes(); return; }
     if(!(await bioAvailable())){ showToast('Este dispositivo no tiene Face ID / huella disponible'); return; }
     try{ c.credId = await bioRegister(); c.bio = true; saveLockCfg(c); showToast('Face ID activado'); renderAjustes(); }
-    catch(e){ showToast('No se ha podido activar Face ID'); }
+    catch(e){ showToast(e && e.name==='NotAllowedError' ? 'Face ID cancelado o no permitido' : 'No se ha podido activar Face ID'); }
   }
   function lockCardHtml(){
     const c = lockCfg();
@@ -4286,7 +4286,8 @@ html[data-design] #app.enter :is(.acc-cell,.mv-line,.hist-row,.set-nav-item):nth
       <div class="exp-row"><div class="exp-name">Face ID / huella</div><div style="font-weight:700;">${c.bio?'Activado':'Desactivado'}</div></div>
       <div class="field" style="margin-top:12px;"><label>Pedir el PIN</label>
         <select id="lkTime">${[[0,'Siempre al volver a la app'],[1,'Tras 1 minuto fuera'],[5,'Tras 5 minutos fuera'],[15,'Tras 15 minutos fuera']].map(([v,l])=>`<option value="${v}" ${(c.timeout||0)===v?'selected':''}>${l}</option>`).join('')}</select></div>
-      <button class="btn-ghost" id="lkBio">${c.bio?'Desactivar Face ID':'Activar Face ID'}</button>
+      ${c.bio?'<button class="btn-ghost" id="lkBioRe">Volver a configurar Face ID</button>':''}
+      <button class="btn-ghost" id="lkBio" ${c.bio?'style="margin-top:8px;"':''}>${c.bio?'Desactivar Face ID':'Activar Face ID'}</button>
       <button class="btn-ghost" id="lkChange" style="margin-top:8px;">Cambiar PIN</button>
       <button class="btn-secondary" id="lkOff" style="margin-top:8px;">Quitar PIN</button>`;
   }
@@ -4294,6 +4295,7 @@ html[data-design] #app.enter :is(.acc-cell,.mv-line,.hist-row,.set-nav-item):nth
     const on = document.getElementById('lkOn'); if(on) on.onclick = setupPin;
     const t = document.getElementById('lkTime'); if(t) t.onchange = ()=>{ const c = lockCfg(); c.timeout = parseInt(t.value,10)||0; saveLockCfg(c); showToast('Guardado'); };
     const bio = document.getElementById('lkBio'); if(bio) bio.onclick = async ()=>{ if(await verifyCurrentPin()) toggleBio(); };
+    const bre = document.getElementById('lkBioRe'); if(bre) bre.onclick = async ()=>{ if(await verifyCurrentPin()) toggleBio(true); };
     const ch = document.getElementById('lkChange'); if(ch) ch.onclick = async ()=>{ if(await verifyCurrentPin()) setupPin(); };
     const off = document.getElementById('lkOff'); if(off) off.onclick = async ()=>{ if(await verifyCurrentPin('Introduce tu PIN para quitarlo')){ saveLockCfg(null); showToast('PIN quitado'); renderAjustes(); } };
   }
