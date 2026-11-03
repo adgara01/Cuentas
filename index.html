@@ -372,7 +372,8 @@
   .pend-hint{font-size:12px;color:var(--muted);margin:0 4px 12px;line-height:1.45;}
   .auto-tag{color:var(--green);background:var(--green-bg);}
   .pbadge{display:inline-block;min-width:18px;padding:1px 6px;margin-left:6px;border-radius:999px;background:var(--red);color:#fff;font-size:11px;font-weight:800;line-height:1.4;}
-  .rule-list{max-height:260px;overflow:auto;margin-top:6px;}
+  .rule-list{max-height:260px;overflow:auto;margin-top:6px;} .rule-list.big{max-height:none;overflow:visible;}
+  .rule-row select{max-width:46%;font-size:13px;padding:7px 8px;border-radius:10px;border:1px solid var(--line);background:var(--field,var(--bg));color:var(--ink);font-family:inherit;}
   .rule-row{display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid var(--line);font-size:13px;}
   .rule-row:first-child{border-top:none;} .rule-row b{flex:1;font-weight:700;text-transform:capitalize;word-break:break-word;}
   .rule-row span{color:var(--ink-soft);} .rule-row i{font-style:normal;cursor:pointer;color:var(--muted);padding:2px 6px;}
@@ -1392,7 +1393,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
-  const APP_VERSION = '2026.11.03-5';
+  const APP_VERSION = '2026.11.03-6';
   const DEFAULT_STATE = {
     onboarded: false,
     accounts: [
@@ -1431,7 +1432,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
   let dashFiltersOpen = false;
   let presetActive = false;
   let gastoChartMode = 'bars'; // 'bars' | 'battery'
-  let ajustesSec = null, budMonth = null;
+  let ajustesSec = null, budMonth = null, ajustesSub = null;
   let ajustesOpen = { cuentasEditar:false, cuentas:false, categorias:false, grupos:false, payday:true, prevision:true, preset:false, logGasto:false, logIngreso:false, sync:true, lock:true, export:false };
 
   const $app = document.getElementById('app');
@@ -3346,11 +3347,19 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
       const seen = new Set(Object.keys(state.cardMap||{}));
       state.transactions.forEach(t=>{ if(t.card) seen.add(normName(t.card)); });
       const rules = Object.entries(state.merchantRules||{}).sort((a,b)=>a[0].localeCompare(b[0]));
+      const catsR = (state.categories||[]).slice();
+      const ruleRows = rules.map(([k,c])=>`<div class="rule-row" data-name="${escH(k)}"><b>${escH(k)}</b><select data-rulecat="${escH(k)}">${(catsR.includes(c)?catsR:catsR.concat([c])).map(x=>`<option value="${escH(x)}" ${x===c?'selected':''}>${escH(x)}</option>`).join('')}</select><i data-rule="${escH(k)}" title="Olvidar">✕</i></div>`).join('');
+      if(ajustesSub==='comercios'){
+        html += collapsibleCard('pagos', 'Comercios aprendidos', `
+          <button class="set-back" id="ruBack" style="margin:0 0 12px;">‹ Pagos con Apple Pay</button>
+          ${rules.length ? `<div class="field" style="margin-bottom:8px;"><input type="search" id="ruQ" placeholder="Buscar comercio (${rules.length})" autocapitalize="off" autocomplete="off"></div>
+          <div class="rule-list big" id="ruList">${ruleRows}</div><div class="empty-note" id="ruNone" style="display:none;">Ningún comercio coincide.</div>` : '<div class="empty-note">Aún no ha aprendido ninguno. Se llena al confirmar pagos en Pendientes.</div>'}
+        `);
+      } else
       html += collapsibleCard('pagos', 'Pagos con Apple Pay', `
         ${seen.size ? Array.from(seen).map(k=>`<div class="exp-row" style="gap:10px;"><div class="exp-name" style="text-transform:capitalize;">${escH(k)}</div><select data-card="${escH(k)}" style="max-width:55%;"><option value="">— sin enlazar —</option>${accsT.map(a=>`<option value="${a.id}" ${state.cardMap[k]===a.id?'selected':''}>${escH(a.name)}</option>`).join('')}</select></div>`).join('') : '<div class="empty-note">Todavía no hay tarjetas. Aparecen solas con el primer pago, o añádelas aquí.</div>'}
         <div class="two-col" style="margin-top:10px;align-items:end;"><div class="field" style="margin:0;"><input type="text" id="cardNew" placeholder="Tarjeta, como sale en Cartera" autocapitalize="off"></div><button class="btn-ghost" id="cardAdd">Añadir tarjeta</button></div>
-        <div class="section-title" style="margin:18px 0 4px;">Comercios aprendidos (${rules.length})</div>
-        ${rules.length ? `<div class="rule-list">${rules.map(([k,c])=>`<div class="rule-row"><b>${escH(k)}</b><span>${escH(c)}${state.merchantNotes[k] ? ' · “'+escH(state.merchantNotes[k])+'”' : ''}</span><i data-rule="${escH(k)}" title="Olvidar">✕</i></div>`).join('')}</div>` : '<div class="empty-note">Aún no ha aprendido ninguno. Se llena al confirmar pagos en Pendientes.</div>'}
+        <button class="btn-ghost" id="ruOpen" style="margin-top:14px;display:flex;justify-content:space-between;align-items:center;"><span>Comercios aprendidos (${rules.length})</span><span>›</span></button>
         <div class="section-title" style="margin:18px 0 8px;">Para el Atajo de iPhone</div>
         <button class="btn-ghost" id="copyUrl">Copiar dirección (URL)</button>
         <button class="btn-ghost" id="copyKey" style="margin-top:8px;">Copiar clave pública (apikey)</button>
@@ -3504,10 +3513,11 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
 
     html += '</div></div>';
     $app.innerHTML = html;
+    if(ajustesSub) $app.querySelectorAll('.set-card').forEach(c=>{ if(!c.querySelector('#ruBack')) c.style.display = 'none'; });
 
     { const sp = document.getElementById('setPend'); if(sp) sp.onclick = ()=>{ activeTab = 'pend'; render(); window.scrollTo(0,0); }; }
-    $app.querySelectorAll('.set-nav-item[data-sec]').forEach(b=> b.onclick = ()=>{ ajustesSec = b.dataset.sec; renderAjustes(); window.scrollTo(0,0); });
-    { const bk = document.getElementById('setBack'); if(bk) bk.onclick = ()=>{ ajustesSec = null; renderAjustes(); window.scrollTo(0,0); }; }
+    $app.querySelectorAll('.set-nav-item[data-sec]').forEach(b=> b.onclick = ()=>{ ajustesSec = b.dataset.sec; ajustesSub = null; renderAjustes(); window.scrollTo(0,0); });
+    { const bk = document.getElementById('setBack'); if(bk) bk.onclick = ()=>{ ajustesSec = null; ajustesSub = null; renderAjustes(); window.scrollTo(0,0); }; }
     { const bb = document.getElementById('budBody'); if(bb){ bb.innerHTML = budgetCardHtml(planMonths); bindBudget(planMonths); } }
     { const ub = document.getElementById('updCheck'); if(ub) ub.onclick = async ()=>{ ub.disabled = true; showToast('Buscando actualización…'); const r = await checkForUpdate(true, true); ub.disabled = false; if(r==='none') showToast('Ya tienes la última versión'); else if(r==='offline') showToast('No se pudo comprobar (sin conexión)'); }; }
     { const uf = document.getElementById('updForce'); if(uf) uf.onclick = ()=> forceUpdate(); }
@@ -3525,6 +3535,10 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     document.getElementById('accKeyBtn').onclick = openShortcutKey;
     $app.querySelectorAll('select[data-card]').forEach(sel=> sel.onchange = async ()=>{ if(sel.value) state.cardMap[sel.dataset.card] = sel.value; else delete state.cardMap[sel.dataset.card]; await saveState(); showToast('Tarjeta enlazada'); });
     { const add = document.getElementById('cardAdd'); if(add) add.onclick = async ()=>{ const k = normName(document.getElementById('cardNew').value); if(!k){ showToast('Escribe el nombre de la tarjeta'); return; } if(!(k in state.cardMap)){ const a0 = state.accounts.find(a=>a.type==='corriente' && !a.manual) || state.accounts[0]; state.cardMap[k] = a0.id; } await saveState(); renderAjustes(); }; }
+    { const o = document.getElementById('ruOpen'); if(o) o.onclick = ()=>{ ajustesSub = 'comercios'; renderAjustes(); window.scrollTo(0,0); }; }
+    { const bk2 = document.getElementById('ruBack'); if(bk2) bk2.onclick = ()=>{ ajustesSub = null; renderAjustes(); window.scrollTo(0,0); }; }
+    { const q = document.getElementById('ruQ'); if(q) q.oninput = ()=>{ const t = q.value.trim().toLowerCase(); let n = 0; $app.querySelectorAll('#ruList .rule-row').forEach(r=>{ const ok = !t || r.dataset.name.toLowerCase().includes(t); r.style.display = ok ? '' : 'none'; if(ok) n++; }); const nn = document.getElementById('ruNone'); if(nn) nn.style.display = n ? 'none' : ''; }; }
+    $app.querySelectorAll('select[data-rulecat]').forEach(sel=> sel.onchange = async ()=>{ state.merchantRules[sel.dataset.rulecat] = sel.value; await saveState(); showToast('Categoría cambiada'); });
     $app.querySelectorAll('i[data-rule]').forEach(i=> i.onclick = async ()=>{ delete state.merchantRules[i.dataset.rule]; delete state.merchantNotes[i.dataset.rule]; await saveState(); renderAjustes(); });
     const copyTxt = async (txt,msg)=>{ try{ await navigator.clipboard.writeText(txt); showToast(msg); }catch(e){ showToast('No se pudo copiar'); } };
     { const cu = document.getElementById('copyUrl'); if(cu) cu.onclick = ()=> copyTxt(SUPABASE_URL+'/rest/v1/rpc/cuentas_add_pago','Dirección copiada'); const ck = document.getElementById('copyKey'); if(ck) ck.onclick = ()=> copyTxt(SUPABASE_ANON_KEY,'Clave copiada'); }
