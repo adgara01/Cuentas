@@ -776,6 +776,13 @@
   }
   .toast.show{opacity:1;}
 
+
+.pushsw{width:50px;height:30px;border-radius:999px;border:1px solid var(--border,#d0d4da);background:var(--card2,#e5e7eb);position:relative;padding:0;cursor:pointer;flex-shrink:0;transition:background .18s,border-color .18s;touch-action:manipulation;}
+.pushsw i{position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:transform .18s;}
+.pushsw.on{background:var(--green,#16a673);border-color:transparent;}
+.pushsw.on i{transform:translateX(20px);}
+.pushsw:disabled{opacity:.45;cursor:default;}
+.pend-card.pend-focus{box-shadow:0 0 0 2px var(--green,#16a673);}
 /*DESIGNS-START*/
 /* ===== DISEÑOS (selector en Ajustes → Aplicación). Sin data-design = clásico ===== */
 html[data-design="ios"]{--bg:#DCE5F6;--cell:rgba(255,255,255,.60);--ink:#0C1224;--on-ink:#fff;--ink-soft:#46506A;--muted:#76819C;--line:rgba(40,60,120,.12);--line-soft:rgba(40,60,120,.12);--green:#139E67;--green-bg:rgba(19,158,103,.15);--red:#E0453A;--red-bg:rgba(224,69,58,.14);--red-mid:#F19A93;--green-mid:#74CAAA;--amber:#B07C08;--amber-bg:rgba(230,170,30,.20);--cat-violet:#6E5FE0;--cat-blue:#2F7DE1;--acc:#0A7AFF;--acc-bg:rgba(10,122,255,.14);--glass-bd:rgba(255,255,255,.80);--field:rgba(70,90,150,.10);--cell-solid:#F2F6FD;--shadow:0 12px 32px rgba(40,60,130,.13),0 1px 0 rgba(255,255,255,.7) inset;--rad:28px;--a1:#3E8BFF;--a2:#8A5CFF;--a1-rgb:62,139,255;--a2-rgb:138,92,255;}
@@ -1393,7 +1400,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
-  const APP_VERSION = '2026.11.03-6';
+  const APP_VERSION = '2026.11.05-1';
   const DEFAULT_STATE = {
     onboarded: false,
     accounts: [
@@ -3136,7 +3143,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
 
   const CARD_SEC = { sync:'cuenta', lock:'cuenta', apariencia:'app', diseno:'app', acento:'app', actualizacion:'app', payday:'presupuesto', presupuesto:'presupuesto',
     categorias:'categorias', grupos:'categorias', cuentasEditar:'cuentas', cuentas:'cuentas', pagos:'cuentas',
-    preset:'datos', logGasto:'datos', logIngreso:'datos', export:'datos' };
+    notif:'cuenta', preset:'datos', logGasto:'datos', logIngreso:'datos', export:'datos' };
   const ICO_P = {
     user:'<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/>',
     target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2"/>',
@@ -3341,6 +3348,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
       `);
 
     html += collapsibleCard('lock', 'Bloqueo con PIN y Face ID', lockCardHtml());
+    html += collapsibleCard('notif', 'Notificaciones', pushCardHtml());
 
     { // ---- pagos con Apple Pay ----
       const accsT = state.accounts.filter(a=>!a.manual);
@@ -3544,6 +3552,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     { const cu = document.getElementById('copyUrl'); if(cu) cu.onclick = ()=> copyTxt(SUPABASE_URL+'/rest/v1/rpc/cuentas_add_pago','Dirección copiada'); const ck = document.getElementById('copyKey'); if(ck) ck.onclick = ()=> copyTxt(SUPABASE_ANON_KEY,'Clave copiada'); }
     document.getElementById('logoutBtn').onclick = doLogout;
     bindLockCard();
+    bindPushCard();
 
     document.getElementById('paydayInput').onchange = e=>{
       let v = parseInt(e.target.value,10)||1;
@@ -4883,6 +4892,8 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     initTokenPrefetch();
     if(lockP){ await lockP; document.body.classList.remove('privacy-cover'); }
     render();
+    pushSyncOnLogin();
+    handleDeepLink();
   }
   function initTokenPrefetch(){ /* reservado */ }
 
@@ -4890,9 +4901,154 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     if(!confirm('¿Cerrar sesión en este dispositivo?')) return;
     loggingOut = true;
     try{ localStorage.removeItem('cuentas-last-profile'); }catch(e){}
+    try{ await pushUnsubscribeDevice(); }catch(e){}
     try{ await sb.auth.signOut(); }catch(e){}
     location.reload();
   }
+
+
+  // ================= NOTIFICACIONES PUSH =================
+  const VAPID_PUBLIC_KEY = 'BMG3XPW1JnkV6TU7XH1zg1bMrcbWQ3JArAfaLXZgHSXaDM4NxUuCkmtAmYWCs7XCkI3RDaVIY_UkyWVLnYTr3Ds';
+  const PUSH_FN = 'cuentas-push';
+  const PUSH_OFF_KEY = 'cuentas-push-off';
+  function pushSupported(){ return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window; }
+  function isIOSDevice(){ return /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1); }
+  function isStandaloneApp(){ return navigator.standalone===true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches); }
+  function urlB64ToUint8(b64){ const p='='.repeat((4-b64.length%4)%4), t=(b64+p).replace(/-/g,'+').replace(/_/g,'/'); return Uint8Array.from(atob(t), c=>c.charCodeAt(0)); }
+  let swReg = null;
+  async function pushRegisterSW(){
+    if(!('serviceWorker' in navigator)) return null;
+    try{ swReg = await navigator.serviceWorker.register('./sw.js', { updateViaCache:'none' }); }catch(e){ swReg = null; }
+    return swReg;
+  }
+  async function pushCurrentSub(){
+    try{ const reg = await navigator.serviceWorker.getRegistration(); return reg ? await reg.pushManager.getSubscription() : null; }catch(e){ return null; }
+  }
+  async function pushSave(sub){
+    const j = sub.toJSON();
+    return sb.rpc('cuentas_push_guardar', { p_endpoint:j.endpoint, p_p256dh:j.keys.p256dh, p_auth:j.keys.auth });
+  }
+  // Se llama directamente desde el toque del interruptor (iOS exige que el permiso se pida lo primero)
+  async function pushEnable(){
+    if(!pushSupported()) return { ok:false, why:'unsupported' };
+    if(isIOSDevice() && !isStandaloneApp()) return { ok:false, why:'not-installed' };
+    const perm = Notification.permission==='granted' ? 'granted' : await Notification.requestPermission();
+    if(perm!=='granted') return { ok:false, why:perm };
+    try{
+      await navigator.serviceWorker.register('./sw.js', { updateViaCache:'none' });
+      const reg = await navigator.serviceWorker.ready;
+      let sub = await reg.pushManager.getSubscription();
+      if(!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly:true, applicationServerKey: urlB64ToUint8(VAPID_PUBLIC_KEY) });
+      const r = await pushSave(sub);
+      if(r.error) return { ok:false, why:'save', error:r.error };
+    }catch(e){ return { ok:false, why:'sub', error:e }; }
+    try{ localStorage.removeItem(PUSH_OFF_KEY); }catch(e){}
+    return { ok:true };
+  }
+  async function pushDisable(){
+    const sub = await pushCurrentSub();
+    if(sub){ try{ await sb.rpc('cuentas_push_borrar', { p_endpoint: sub.endpoint }); }catch(e){} try{ await sub.unsubscribe(); }catch(e){} }
+    try{ localStorage.setItem(PUSH_OFF_KEY, '1'); }catch(e){}
+  }
+  // Al cerrar sesión: este móvil deja de recibir avisos de esta cuenta
+  async function pushUnsubscribeDevice(){
+    const sub = await pushCurrentSub();
+    if(sub){ try{ await sb.rpc('cuentas_push_borrar', { p_endpoint: sub.endpoint }); }catch(e){} try{ await sub.unsubscribe(); }catch(e){} }
+  }
+  // Al entrar: registra el service worker y deja la suscripción a nombre de la cuenta actual
+  async function pushSyncOnLogin(){
+    try{
+      if(!pushSupported()) return;
+      await pushRegisterSW();
+      if(Notification.permission!=='granted') return;
+      let off = false; try{ off = !!localStorage.getItem(PUSH_OFF_KEY); }catch(e){}
+      if(off) return;
+      const sub = await pushCurrentSub();
+      if(sub) await pushSave(sub);
+    }catch(e){}
+  }
+  async function pushState(){
+    if(!pushSupported()) return { on:false, off:true, hint:'Este navegador no admite notificaciones' };
+    if(isIOSDevice() && !isStandaloneApp()) return { on:false, off:true, hint:'Añade Cuentas a la pantalla de inicio para recibirlas' };
+    if(Notification.permission==='denied') return { on:false, off:true, hint:'Bloqueadas: Ajustes del iPhone › Notificaciones › Cuentas' };
+    let offPref = false; try{ offPref = !!localStorage.getItem(PUSH_OFF_KEY); }catch(e){}
+    const sub = Notification.permission==='granted' ? await pushCurrentSub() : null;
+    return { on: !!sub && !offPref, off:false, hint:'' };
+  }
+  function pushCardHtml(){
+    return `<div class="exp-row" style="border-top:none;padding-top:0;align-items:center;">
+        <div class="exp-name">En este móvil</div>
+        <button class="pushsw" id="pushSw" role="switch" aria-checked="false" aria-label="Notificaciones en este móvil"><i></i></button>
+      </div>
+      <div id="pushHint" style="font-size:12px;color:var(--muted);font-weight:600;min-height:16px;margin-top:2px;"></div>
+      <button class="btn-ghost" id="pushTest" style="margin-top:10px;display:none;">Enviar notificación de prueba</button>
+      <div id="pushTestOut" style="font-size:12px;color:var(--muted);margin-top:6px;word-break:break-word;"></div>`;
+  }
+  async function pushPaint(){
+    const sw = document.getElementById('pushSw'); if(!sw) return;
+    const st = await pushState();
+    sw.classList.toggle('on', st.on); sw.setAttribute('aria-checked', st.on?'true':'false'); sw.disabled = !!st.off;
+    const h = document.getElementById('pushHint'); if(h) h.textContent = st.hint;
+    const t = document.getElementById('pushTest'); if(t) t.style.display = st.on ? '' : 'none';
+  }
+  function bindPushCard(){
+    const sw = document.getElementById('pushSw'); if(!sw) return;
+    pushPaint();
+    sw.onclick = async ()=>{
+      const wasOn = sw.classList.contains('on');
+      sw.classList.toggle('on', !wasOn); // al instante; si falla, vuelve atrás
+      if(wasOn){ await pushDisable(); pushPaint(); return; }
+      const r = await pushEnable();
+      if(!r.ok){
+        const msg = { unsupported:'Este navegador no admite notificaciones', 'not-installed':'Añade Cuentas a la pantalla de inicio primero', denied:'Bloqueadas en los ajustes del iPhone', default:'No has dado permiso', save:'No se ha podido guardar. ¿Has ejecutado el SQL de avisos?', sub:'No se ha podido activar en este móvil' }[r.why] || 'No se ha podido activar';
+        showToast(msg);
+      } else showToast('Notificaciones activadas');
+      pushPaint();
+    };
+    const tb = document.getElementById('pushTest');
+    if(tb) tb.onclick = async ()=>{
+      const out = document.getElementById('pushTestOut'); out.textContent = 'Enviando…'; tb.disabled = true;
+      try{
+        const r = await sb.functions.invoke(PUSH_FN, { body:{ test:true } });
+        if(r.error){ out.textContent = 'Error: ' + (r.error.message||r.error) + ' (¿está desplegada la función «'+PUSH_FN+'»?)'; }
+        else { const d = r.data||{}; out.textContent = 'Enviadas: '+(d.sent||0)+' de '+(d.subscriptions||0)+(d.errors&&d.errors.length ? ' · '+d.errors.map(e=>e.status+' '+e.body).join(' | ') : ''); }
+      }catch(e){ out.textContent = 'Error: '+(e.message||e); }
+      tb.disabled = false;
+    };
+  }
+
+  // ---- Enlaces desde un aviso: #mov=ID abre ese movimiento, #pend=ID abre ese pendiente ----
+  let pendingLink = null;
+  function parseLink(u){
+    try{ const h = String(u||'').split('#')[1] || ''; const m = /^(mov|pend)=(.+)$/.exec(decodeURIComponent(h)); return m ? { k:m[1], id:m[2] } : null; }catch(e){ return null; }
+  }
+  function handleDeepLink(url){
+    const L = url ? parseLink(url) : (pendingLink || parseLink(location.hash));
+    pendingLink = null;
+    if(!L) return;
+    try{ history.replaceState(null, '', location.pathname + location.search); }catch(e){}
+    if(!me){ pendingLink = L; return; }
+    const t = state.transactions.find(x=>x.id===L.id);
+    if(L.k==='pend' && t && t.pending){
+      activeTab = 'pend'; render(); window.scrollTo(0,0);
+      setTimeout(()=>{
+        const card = document.querySelector('.pend-card[data-id="'+L.id+'"]'); if(!card) return;
+        card.scrollIntoView({ block:'center' });
+        const sug = card.querySelector('.pend-sug'); const chips = card.querySelector('.pend-chips');
+        if(sug) sug.style.display='none'; if(chips) chips.style.display='';
+        card.classList.add('pend-focus');
+      }, 60);
+    } else if(t){
+      activeTab = 'movs'; render();
+      setTimeout(()=>{ try{ openEditSheet(L.id, render); }catch(e){} }, 80);
+    } else { activeTab = 'pend'; render(); }
+  }
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.addEventListener('message', ev=>{
+      if(ev.data && ev.data.type==='open-url'){ const L = parseLink(ev.data.url); if(!L) return; pendingLink = L; if(me && !document.body.classList.contains('privacy-cover')){ syncWithCloud().catch(()=>{}).then(()=> handleDeepLink()); } }
+    });
+  }
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden && pendingLink && me && !document.body.classList.contains('privacy-cover')) handleDeepLink(); });
 
   // ---------- hojas de Ajustes: correo, contraseña, clave del atajo ----------
   function sheetErr(t){ const e = $sheet.querySelector('.auth-err'); if(e) e.textContent = t||''; }
@@ -5169,7 +5325,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
   async function forceUpdate(){
     showToast('Actualizando…');
     try{ if(window.caches){ const ks = await caches.keys(); await Promise.all(ks.map(k=>caches.delete(k))); } }catch(e){}
-    try{ if(navigator.serviceWorker){ const rs = await navigator.serviceWorker.getRegistrations(); await Promise.all(rs.map(r=>r.unregister())); } }catch(e){}
+    try{ if(navigator.serviceWorker){ const rs = await navigator.serviceWorker.getRegistrations(); await Promise.all(rs.map(r=>r.update())); } }catch(e){}
     const base = location.origin + location.pathname;
     try{ await fetch(base, { cache:'reload' }); }catch(e){}
     try{ sessionStorage.removeItem('cuentas-upd-tries'); }catch(e){}
