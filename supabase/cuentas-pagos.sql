@@ -140,7 +140,7 @@ begin
         perform cuentas_push_enviar(uid_, ttl, txt, './#pend=' || tid, 'tx-' || tid);
       else
         ttl := ttl || coalesce(' · ' || com, '');
-        txt := 'Pendiente de categorizar';
+        txt := coalesce(acc_name,'—') || case when acc_guess then ' (por confirmar)' else '' end || ' · Pendiente de categorizar';
         perform cuentas_push_enviar(uid_, ttl, txt, './#pend=' || tid, 'tx-' || tid);
       end if;
     exception when others then null;

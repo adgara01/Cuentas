@@ -36,7 +36,7 @@ Iconos de línea grises, sin emojis; sin textos explicativos tipo IA; esquinas c
 - Tener dos automatizaciones a la vez hacía fallar el atajo ("Ha habido un problema al ejecutar la automatización"). Con una sola funciona.
 - El botón ▶ deja una fila "Importe vacío": es normal.
 - `cuentas_add_pago` acepta además `p_ref` (no repetir) y `p_fecha` (fecha real del pago), pensados para una cola de reintentos en el iPhone, aparcada de momento.
-- Avisos del servidor (título / texto): "−X € · K" / "C · COMERCIO" · "−X € · K" / "COMERCIO · Falta confirmar la cuenta" · "−X € · COMERCIO" / "Pendiente de categorizar". El título nunca es "Cuentas": iOS ya añade debajo "from Cuentas" (en inglés, no se puede quitar) y saldría repetido. Enlaces `#mov=<id>` y `#pend=<id>`. iOS no permite botones ni desplegables en avisos de una web app.
+- Avisos del servidor (título / texto): "−X € · K" / "C · COMERCIO" · "−X € · K" / "COMERCIO · Falta confirmar la cuenta" · "−X € · COMERCIO" / "C · Pendiente de categorizar" (con "(por confirmar)" si la cuenta es una suposición). El título nunca es "Cuentas": iOS ya añade debajo "from Cuentas" (en inglés, no se puede quitar) y saldría repetido. Enlaces `#mov=<id>` y `#pend=<id>`. iOS no permite botones ni desplegables en avisos de una web app.
 - Regla de Adri: si no llega el aviso de Cuentas, el pago se apunta a mano.
 
 ## Si cambia de iPhone, se le rompe o lo pierde
