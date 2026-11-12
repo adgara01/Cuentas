@@ -37,7 +37,7 @@ Iconos de línea grises, sin emojis; sin textos explicativos tipo IA; esquinas c
 - El botón ▶ deja una fila "Importe vacío": es normal.
 - `cuentas_add_pago` acepta además `p_ref` (no repetir) y `p_fecha` (fecha real del pago), pensados para una cola de reintentos en el iPhone, aparcada de momento.
 - Avisos del servidor (título / texto): "−X € · K" / "C · COMERCIO" · "−X € · K" / "COMERCIO · Falta confirmar la cuenta" · "−X € · COMERCIO" / "C · Pendiente de categorizar" (con "(por confirmar)" si la cuenta es una suposición). El título nunca es "Cuentas": iOS ya añade debajo "from Cuentas" (en inglés, no se puede quitar) y saldría repetido. Enlaces `#mov=<id>` y `#pend=<id>`. iOS no permite botones ni desplegables en avisos de una web app.
-- Regla de Adri: si no llega el aviso de Cuentas, el pago se apunta a mano.
+- Regla de Adri: si no llega el aviso de Cuentas, el pago se apunta a mano. Comprobado con pago real el 12 nov 2026 (llegan el aviso de Atajos y el de Cuentas).
 
 ## Si cambia de iPhone, se le rompe o lo pierde
 
@@ -57,7 +57,6 @@ Mejora prevista para cuando haga falta: pasar la acción a un atajo normal ("Env
 
 ## Pendiente
 
-- Confirmar el aviso de Cuentas con un pago real.
 - Añadir a `supabase/` los SQL que faltan (`cuentas-push.sql` con `<SECRETO>`, `cuentas-usuario.sql`) y el código de la Edge Function.
 - Borrar la rama `claude-prueba-permisos`, los movimientos de prueba de 1 €, y el archivo local `claves_notificaciones_NO_SUBIR.txt`.
 - Probar Face ID; registrar la nómina de julio; enlazar tarjetas en Ajustes → Pagos con Apple Pay.
