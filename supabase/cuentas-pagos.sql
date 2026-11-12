@@ -1,4 +1,5 @@
 -- Cuentas · pagos con Apple Pay (Atajo "Cartera" de iOS) · aviso push con cuenta y categoría
+-- Aviso (nov 2026): título "−1,70 € · Rest/Bar" y texto "Ticket Rest. · comercio" (iOS añade "from Cuentas").
 -- Ejecuta ANTES cuentas-push.sql (define cuentas_push_enviar y cuentas_eur).
 -- Pégalo entero en Supabase > SQL Editor > Run. Se puede repetir sin problema.
 -- Novedades:
@@ -38,7 +39,7 @@ declare
   logid bigint; res jsonb; ref_ text := nullif(btrim(coalesce(p_ref,'')), '');
   uid_ uuid; d jsonb; ms bigint; pay_ms bigint; pay_at timestamptz; imp numeric; mn text; cn text; s text;
   acc text; cat text; rule text; pend boolean := false; acc_guess boolean := false; tx jsonb;
-  tid text; acc_name text; cat_known boolean := false; txt text;
+  tid text; acc_name text; cat_known boolean := false; txt text; ttl text; com text;
 begin
   insert into cuentas_pagos_log(importe, comercio, tarjeta, ref, fecha, resultado)
     values (p_importe, p_comercio, p_tarjeta, ref_, nullif(p_fecha,''), 'recibido') returning id into logid;
@@ -123,17 +124,24 @@ begin
     update cuentas_data set data = d, updated_at = to_timestamp(ms/1000.0) where user_id = uid_;
 
     -- aviso al iPhone (si falla, no pasa nada: el pago ya está guardado)
+    -- El título ya es la información (importe y categoría): iOS añade debajo "from Cuentas"
+    -- por su cuenta, así que si el título fuera "Cuentas" saldría el nombre dos veces.
     begin
       select a->>'name' into acc_name from jsonb_array_elements(d->'accounts') a where a->>'id' = acc limit 1;
+      com := nullif(btrim(left(coalesce(nullif(d->'merchantNotes'->>mn,''), p_comercio, ''), 40)), '');
+      ttl := '−' || cuentas_eur(imp) || ' €';
       if cat_known and not acc_guess then
-        txt := 'Gasto de ' || cuentas_eur(imp) || ' € de la cuenta ' || coalesce(acc_name,'—') || ' en la categoría ' || cat;
-        perform cuentas_push_enviar(uid_, 'Cuentas', txt, './#mov=' || tid, 'tx-' || tid);
+        ttl := ttl || ' · ' || cat;
+        txt := coalesce(acc_name,'—') || coalesce(' · ' || com, '');
+        perform cuentas_push_enviar(uid_, ttl, txt, './#mov=' || tid, 'tx-' || tid);
       elsif cat_known then
-        txt := 'Gasto de ' || cuentas_eur(imp) || ' € en la categoría ' || cat || ', falta confirmar la cuenta';
-        perform cuentas_push_enviar(uid_, 'Cuentas', txt, './#pend=' || tid, 'tx-' || tid);
+        ttl := ttl || ' · ' || cat;
+        txt := coalesce(com || ' · ', '') || 'Falta confirmar la cuenta';
+        perform cuentas_push_enviar(uid_, ttl, txt, './#pend=' || tid, 'tx-' || tid);
       else
-        txt := 'Gasto de ' || cuentas_eur(imp) || ' €' || coalesce(' en ' || nullif(left(p_comercio,40),''), '') || ' añadido, pendiente de categorizar';
-        perform cuentas_push_enviar(uid_, 'Cuentas', txt, './#pend=' || tid, 'tx-' || tid);
+        ttl := ttl || coalesce(' · ' || com, '');
+        txt := 'Pendiente de categorizar';
+        perform cuentas_push_enviar(uid_, ttl, txt, './#pend=' || tid, 'tx-' || tid);
       end if;
     exception when others then null;
     end;
