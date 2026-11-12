@@ -39,6 +39,22 @@ Iconos de línea grises, sin emojis; sin textos explicativos tipo IA; esquinas c
 - Avisos del servidor: "Gasto de X € de la cuenta C en la categoría K" · "Gasto de X € en COMERCIO añadido, pendiente de categorizar" · "Gasto de X € en la categoría K, falta confirmar la cuenta". Enlaces `#mov=<id>` y `#pend=<id>`. iOS no permite botones ni desplegables en avisos de una web app.
 - Regla de Adri: si no llega el aviso de Cuentas, el pago se apunta a mano.
 
+## Si cambia de iPhone, se le rompe o lo pierde
+
+Los datos están en Supabase: no se pierde nada. En el iPhone nuevo:
+
+1. Safari → https://adgara01.github.io/Cuentas/ → Compartir → Añadir a pantalla de inicio. Abrirla desde el icono e iniciar sesión.
+2. Ajustes → Bloqueo: volver a poner el PIN y Face ID (se guardan solo en cada dispositivo).
+3. Ajustes → Mi cuenta → Notificaciones: activar y pulsar la prueba (cada iPhone tiene su propia suscripción).
+4. Atajo de Apple Pay: crear de nuevo la automatización de Cartera (las automatizaciones no se sincronizan por iCloud; los atajos normales sí). Pasos en "Atajo de Apple Pay". La URL y la apikey se copian desde Ajustes → Pagos con Apple Pay; la clave `ck_…` desde Ajustes → Mi cuenta → Clave del Atajo.
+
+Si lo ha **perdido o se lo han robado**, además:
+- Ajustes → Mi cuenta → Clave del Atajo → **Generar una clave nueva**, para que la del móvil perdido deje de valer, y ponerla en el atajo del nuevo.
+- Cambiar la contraseña de Cuentas (Ajustes → Mi cuenta → Cambiar contraseña).
+- Opcional, quitar las suscripciones de avisos viejas: `select user_id, endpoint from cuentas_push_subs;` y borrar las que no sean del móvil nuevo.
+
+Mejora prevista para cuando haga falta: pasar la acción a un atajo normal ("Enviar pago a Cuentas", viaja por iCloud) y dejar la automatización solo con "Ejecutar atajo". Para compartirlo con otra persona, usar "Configuración de importación" para que pida su propia clave `ck_…` (con la de Adri, los pagos entrarían en su cuenta).
+
 ## Pendiente
 
 - Confirmar el aviso de Cuentas con un pago real.
