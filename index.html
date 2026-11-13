@@ -632,9 +632,12 @@
   .am-tag-group{display:flex;align-items:center;gap:6px;flex-shrink:0;}
   .am-tag{width:82px;text-align:center;font-size:10px;font-weight:700;padding:4px 6px;border-radius:999px;white-space:nowrap;background:var(--bg);color:var(--ink-soft);}
   .acc-manage-btn{cursor:pointer;}
+  .am-move{width:30px;height:30px;display:grid;place-items:center;border:none;border-radius:9px;background:var(--bg);color:var(--muted);padding:0;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+  .am-move:disabled{opacity:.3;cursor:default;}
+  .am-move:not(:disabled):active{transform:scale(.92);}
   .acc-manage-row > div:first-child{flex:1;min-width:0;overflow:hidden;}
   .acc-manage-row input{flex-shrink:0;}
-  .acc-manage-row:first-child{border-top:none;}
+  .acc-manage-row:first-child, .filter-label + .acc-manage-row{border-top:none;}
   .acc-manage-row .am-name{font-size:13.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .acc-manage-row .am-type{font-size:10.5px;color:var(--muted);text-transform:uppercase;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .group-edit-block{padding:12px 0;border-top:1px solid var(--line);}
@@ -1400,7 +1403,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
-  const APP_VERSION = '2026.11.05-1';
+  const APP_VERSION = '2026.11.13-1';
   const DEFAULT_STATE = {
     onboarded: false,
     accounts: [
@@ -3153,6 +3156,8 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     chart:'<path d="M5 20v-7M12 20V5M19 20V10"/>',
     hourglass:'<path d="M6 3h12M6 21h12M7 3c0 5 5 6 5 9s-5 4-5 9M17 3c0 5-5 6-5 9s5 4 5 9"/>',
     pencil:'<path d="M4 20l1-4L16 5l3 3L8 19z"/>',
+    up:'<path d="M6 15l6-6 6 6"/>',
+    down:'<path d="M6 9l6 6 6-6"/>',
     keyboard:'<rect x="2.5" y="6" width="19" height="12" rx="3"/><path d="M7 10h.01M10.5 10h.01M14 10h.01M17.5 10h.01M7.5 14h9"/>',
     backspace:'<path d="M9 5h11a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H9l-6-7z"/><path d="M13 9.5l4 4M17 9.5l-4 4"/>'
   };
@@ -3402,28 +3407,27 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
       <button class="btn-ghost" id="updForce" style="margin-top:8px;">Forzar actualización (borra la caché)</button>
     `);
 
-    html += collapsibleCard('cuentasEditar', 'Cuentas', `
-      <div class="acc-manage-header">
-        <span></span>
-        <div class="am-tag-group">
-          <span class="am-tag-label">Tipo</span>
-          <span class="am-tag-label">Actualización</span>
-        </div>
-      </div>
-      ${state.accounts.map(a=>`
+    { // ---- cuentas: editar y ordenar (el orden es el del Resumen) ----
+      const accRows = type => { const l = state.accounts.filter(a=>a.type===type); return l.map((a,i)=>`
         <div class="acc-manage-row acc-manage-btn" data-acc="${a.id}">
-          <div class="acc-name-btn">${a.name} <span style="color:var(--muted);">${ico('pencil',13)}</span></div>
+          <div class="acc-name-btn">${escH(a.name)} <span style="color:var(--muted);">${ico('pencil',13)}</span></div>
           <div class="am-tag-group">
-            <span class="am-tag">${a.type==='ahorro'?'Ahorro':'Corriente'}</span>
             <span class="am-tag">${a.manual?'Manual':'Automática'}</span>
+            <button class="am-move" data-move="-1" data-acc="${a.id}" ${i===0?'disabled':''} aria-label="Subir">${ico('up',16)}</button>
+            <button class="am-move" data-move="1" data-acc="${a.id}" ${i===l.length-1?'disabled':''} aria-label="Bajar">${ico('down',16)}</button>
           </div>
-        </div>
-      `).join('')}
-      <button class="btn-ghost" id="addAccBtn" style="margin-top:6px;">+ Añadir cuenta</button>
-    `);
+        </div>`).join('') || '<div class="empty-note">Ninguna.</div>'; };
+      html += collapsibleCard('cuentasEditar', 'Cuentas', `
+        <div class="filter-label" style="margin-top:0;">Corrientes</div>
+        ${accRows('corriente')}
+        <div class="filter-label">Ahorro</div>
+        ${accRows('ahorro')}
+        <button class="btn-ghost" id="addAccBtn" style="margin-top:10px;">+ Añadir cuenta</button>
+      `);
+    }
 
     html += collapsibleCard('cuentas', 'Punto de partida', `
-      ${state.accounts.map(a=>`
+      ${['corriente','ahorro'].flatMap(t=>state.accounts.filter(a=>a.type===t)).map(a=>`
         <div class="acc-manage-row">
           <div><div class="am-name">${a.name}</div><div class="am-type">${a.manual?'manual':a.type} · ${a.manual?'valor actual':'saldo inicial'} ${fmt(a.manual?a.manualBalance:a.initial)}€</div></div>
           <input type="number" step="0.01" data-acc="${a.id}" class="${a.manual?'manual-input':'init-input'}" value="${a.manual?a.manualBalance:a.initial}">
@@ -3660,6 +3664,17 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
       }
       drawNewAccSheet();
     };
+    $app.querySelectorAll('.am-move').forEach(b=> b.onclick = async e=>{
+      e.stopPropagation();
+      const a = state.accounts.find(x=>x.id===b.dataset.acc); if(!a) return;
+      const same = state.accounts.filter(x=>x.type===a.type);
+      const j = same.indexOf(a) + parseInt(b.dataset.move,10);
+      if(j<0 || j>=same.length) return;
+      const i1 = state.accounts.indexOf(a), i2 = state.accounts.indexOf(same[j]);
+      [state.accounts[i1], state.accounts[i2]] = [state.accounts[i2], state.accounts[i1]];
+      await saveState();
+      renderAjustes();
+    });
     $app.querySelectorAll('.acc-manage-btn').forEach(row=>{
       row.onclick = ()=>{
         const acc = state.accounts.find(a=>a.id===row.dataset.acc);
