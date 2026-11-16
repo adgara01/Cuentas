@@ -39,6 +39,15 @@ Iconos de línea grises, sin emojis; sin textos explicativos tipo IA; esquinas c
 - Avisos del servidor (título / texto): "−X € · K" / "C · COMERCIO" · "−X € · K" / "COMERCIO · Falta confirmar la cuenta" · "−X € · COMERCIO" / "C · Pendiente de categorizar" (con "(por confirmar)" si la cuenta es una suposición). El título nunca es "Cuentas": iOS ya añade debajo "from Cuentas" (en inglés, no se puede quitar) y saldría repetido. Enlaces `#mov=<id>` y `#pend=<id>`. iOS no permite botones ni desplegables en avisos de una web app.
 - Regla de Adri: si no llega el aviso de Cuentas, el pago se apunta a mano. Comprobado con pago real el 12 nov 2026 (llegan el aviso de Atajos y el de Cuentas).
 
+## Inversiones
+
+- Pestaña `inv` (en ordenador, en la barra; en móvil, desde la tarjeta "Inversiones" del Resumen). Código en el bloque `INVERSIONES` de `index.html`.
+- `state.investments = [{id, symbol, name, type, exch, cur, account, lots:[{id, date, eur, units, price, fx, tx?}]}]`. Las participaciones de cada aportación salen del cierre de ese día (Yahoo, ajustado por splits) y del cambio a euros de ese día, salvo que Adri las ponga a mano.
+- Una cuenta con inversiones vale la suma de sus inversiones a precio de mercado (`currentBalance` → `invAccValue`), sea manual o no.
+- Aportación con "Sale de" crea un Movimiento hacia la cuenta del bróker (`inv:<id>`, `lot.tx`). Al quitar la aportación o la inversión se borran sus movimientos.
+- Precios: Edge Function `cuentas-cotizaciones` (`supabase/functions/cuentas-cotizaciones/index.ts`), sin secrets, proxy de Yahoo Finance con User-Agent `Cuentas/1.0` (con UA de navegador falso o sin UA, Yahoo da 429). Operaciones `search`, `quotes` (range=1d: `chartPreviousClose` es el cierre de ayer), `chart`.
+- Caché en el móvil: `cuentas-inv-q` (cotizaciones) y `cuentas-inv-h-<símbolo>|<intervalo>` (históricos, 6 h). Se refresca al abrir Resumen/Inversiones y cada minuto.
+
 ## Si cambia de iPhone, se le rompe o lo pierde
 
 Los datos están en Supabase: no se pierde nada. En el iPhone nuevo:
