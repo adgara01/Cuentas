@@ -716,6 +716,14 @@
   .inv-ops .op-fut.pos{color:var(--green-mid, var(--green));} .inv-ops .op-fut.neg{color:var(--red-mid, var(--red));}
   .inv-ops td.pos{color:var(--green);} .inv-ops td.neg{color:var(--red);}
   .inv-val.neg{color:var(--red);}
+  .inv-ctl{display:flex;gap:6px;flex-wrap:wrap;}
+  .inv-lbl-px{margin-top:3px;} .inv-px{font-variant-numeric:tabular-nums;}
+  .inv-ops .op-nm{display:flex;align-items:flex-start;gap:6px;}
+  .inv-ops .op-tog{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:6px;background:var(--bg);color:var(--muted);font-style:normal;flex-shrink:0;transition:transform .2s;}
+  .inv-ops tr.on .op-tog{transform:rotate(180deg);}
+  .inv-ops tr.op-grp td{font-weight:700;}
+  .inv-ops tr.op-kid td{font-size:12px;background:var(--bg);}
+  .inv-ops tr.op-kid td:first-child{border-left:3px solid var(--line);}
   .inv-closed-link{border:none;background:none;font:inherit;color:var(--muted);text-decoration:underline;cursor:pointer;padding:0;}
   .inv-lot{cursor:pointer;}
   .inv-plan{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;text-align:left;border:none;background:var(--bg);border-radius:14px;padding:12px 14px;font-family:inherit;color:var(--ink);cursor:pointer;}
@@ -1479,7 +1487,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
-  const APP_VERSION = '2026.11.17-4';
+  const APP_VERSION = '2026.11.17-5';
   const DEFAULT_STATE = {
     onboarded: false,
     accounts: [
@@ -5314,7 +5322,8 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
   const INV_COLORS = ['var(--acc, var(--green))','var(--cat-violet)','var(--cat-blue)','var(--amber)','var(--green)','var(--red-mid)','var(--ink-soft)'];
   const INV_RANGES = [['1M',30],['3M',91],['6M',182],['1A',365],['Todo',0]];
   let invQ = {}; try{ invQ = JSON.parse(localStorage.getItem('cuentas-inv-q')||'{}') || {}; }catch(e){ invQ = {}; }
-  let invQAt = 0, invBusy = null, invRange = '1A', invErr = '';
+  let invQAt = 0, invBusy = null, invRange = 'Todo', invErr = '';
+  const invOpenGrp = new Set();
   const invH = {};
   const invList = ()=> Array.isArray(state.investments) ? state.investments : (state.investments = []);
   const invOf = accId => invList().filter(p=>p.account===accId);
@@ -5365,11 +5374,12 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     const h = await invHist(p.symbol, from, interval);
     const hf = (!p.cur || p.cur==='EUR') ? null : await invHist(fxSym(p.cur), from, interval);
     const days = h.ds.filter(d=>d>d0 && d<end && d<todayStr());
-    const out = [{ d:d0, v:r.cost, i:r.cost }].concat(days.map(d=>{
-      const fx = hf ? priceAt(hf, d)*(invPence(p.cur)?0.01:1) : 1;
-      return { d, v:r.units*(priceAt(h, d)||0)*fx, i:r.cost };
+    const px = v => ({ [p.symbol]: { p:v, c:p.cur } });
+    const out = [{ d:d0, v:r.cost, i:r.cost, px:px(+r.lot.price) }].concat(days.map(d=>{
+      const fx = hf ? priceAt(hf, d)*(invPence(p.cur)?0.01:1) : 1, c = priceAt(h, d)||0;
+      return { d, v:r.units*c*fx, i:r.cost, px:px(c) };
     }));
-    out.push({ d:end, v:r.out, i:r.cost });
+    out.push({ d:end, v:r.out, i:r.cost, px:px(+r.sellPx) });
     return out;
   }
   function invValue(p){
@@ -5611,7 +5621,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     const allClosed = ps.every(p=>p.closed), end = allClosed ? ps.map(p=>p.closed).sort().pop() : today;
     ps.forEach(p=>{ hs[p.symbol].ds.forEach(d=>{ if(d>=first && d<today && d<=end) days.add(d); }); p.lots.concat(invSales(p)).forEach(l=>{ if(l.date<today) days.add(l.date); }); });
     const out = [...days].sort().map(d=>{
-      let v = 0, i = 0;
+      let v = 0, i = 0; const px = {};
       ps.forEach(p=>{
         const ls = p.lots.filter(l=>l.date<=d); if(!ls.length) return;
         const ss = invSales(p).filter(x=>x.date<=d);
@@ -5619,11 +5629,15 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
         i += sumF(ls,'eur') - sumF(ss,'eur'); // dinero puesto menos dinero sacado
         if(u<=1e-9) return;
         const fx = (!p.cur || p.cur==='EUR') ? 1 : priceAt(hs[fxSym(p.cur)], d)*(invPence(p.cur)?0.01:1);
-        v += u*(priceAt(hs[p.symbol], d)||0)*(fx||0);
+        const c = priceAt(hs[p.symbol], d)||0;
+        v += u*c*(fx||0); px[p.symbol] = { p:c, c:p.cur };
       });
-      return { d, v, i };
+      return { d, v, i, px };
     });
-    if(!allClosed) out.push({ d:today, v:ps.reduce((s,p)=>s+invValue(p),0), i:ps.reduce((s,p)=>s+invPaid(p)-invSold(p),0) });
+    if(!allClosed){
+      const px = {}; ps.forEach(p=>{ if(!p.closed && invQ[p.symbol]) px[p.symbol] = { p:invQ[p.symbol].price, c:p.cur }; });
+      out.push({ d:today, v:ps.reduce((s,p)=>s+invValue(p),0), i:ps.reduce((s,p)=>s+invPaid(p)-invSold(p),0), px });
+    }
     return out;
   }
   function invCut(series, rk){
@@ -5660,49 +5674,82 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
   function invChartLabel(series, i, masked, ilbl){
     const a = series[0], b = series[i];
     const perf = b.v - a.v - (b.i - a.i), base = a.v + (b.i - a.i);
-    const head = i===series.length-1 ? '' : fmtDay(b.d);
+    const head = fmtDay(b.d) + (b.d===todayStr() ? '' : '');
+    const pxs = b.px ? Object.entries(b.px).slice(0,3).map(([s,x])=>`<span class="inv-px">${escH(s)} ${fmtPx(x.p, x.c)}</span>`).join('') : '';
     return `<div class="inv-lbl-v mono">${masked ? MASK : euro(b.v)}</div>
-      <div class="inv-lbl-s"><span class="inv-chip ${posCls(perf)}">${masked ? '•••' : euroS(perf)} · ${pctS(base ? perf/base : 0)}</span>${head ? `<span>${head}</span>` : ''}<span class="inv-lbl-i">${ilbl||'Aportado'} ${masked ? '•••' : euro(b.i)}</span></div>`;
-  }
-  function invWireChart(box, series, masked){
-    const svg = box.querySelector('.inv-svg'), lbl = box.querySelector('.inv-lbl'), cur = box.querySelector('.inv-cur'), dot = box.querySelector('.inv-dot');
-    if(!svg) return;
-    const il = box.dataset.ilbl || '';
-    lbl.innerHTML = invChartLabel(series, series.length-1, masked, il);
-    const at = ev => {
-      const r = svg.getBoundingClientRect(), x = Math.min(Math.max(ev.clientX - r.left, 0), r.width);
-      const i = Math.round(x/r.width*(series.length-1));
-      const vb = svg.viewBox.baseVal, px = 4 + i*(vb.width-8)/Math.max(1,series.length-1);
-      cur.setAttribute('x1', px); cur.setAttribute('x2', px); cur.style.display = '';
-      const vals = series.flatMap(s=>[s.v,s.i]); let lo = Math.min(...vals), hi = Math.max(...vals); const pad = (hi-lo)*0.08 || hi*0.05 || 1; lo -= pad; hi += pad;
-      const py = 12 + (vb.height-36)*(1-(series[i].v-lo)/(hi-lo));
-      dot.style.display = ''; dot.style.left = (px/vb.width*r.width)+'px'; dot.style.top = (py/vb.height*r.height)+'px';
-      lbl.innerHTML = invChartLabel(series, i, masked, il);
-    };
-    const end = ()=>{ cur.style.display = 'none'; dot.style.display = 'none'; lbl.innerHTML = invChartLabel(series, series.length-1, masked, il); };
-    svg.addEventListener('pointerdown', e=>{ at(e); });
-    svg.addEventListener('pointermove', e=>{ if(e.pointerType==='mouse' || e.buttons) at(e); });
-    svg.addEventListener('pointerleave', end); svg.addEventListener('pointerup', e=>{ if(e.pointerType!=='mouse') end(); }); svg.addEventListener('pointercancel', end);
-    svg.style.touchAction = 'pan-y';
+      <div class="inv-lbl-s"><span class="inv-chip ${posCls(perf)}">${masked ? '•••' : euroS(perf)} · ${pctS(base ? perf/base : 0)}</span><span>${head}</span><span class="inv-lbl-i">${ilbl||'Aportado'} ${masked ? '•••' : euro(b.i)}</span></div>
+      ${pxs ? `<div class="inv-lbl-s inv-lbl-px">${pxs}</div>` : ''}`;
   }
   function invChartBox(key, ranges, cur, ilbl){
     ranges = ranges || INV_RANGES.map(r=>r[0]); cur = cur || invRange;
     return `<div class="inv-chart" id="invBox-${key}" data-rk="${cur}" data-ilbl="${ilbl||''}">
       <div class="inv-chart-top"><div class="inv-lbl"></div>
-        <div class="inv-rng">${ranges.map(r=>`<button data-r="${r}" class="${r===cur?'on':''}">${r}</button>`).join('')}</div></div>
+        <div class="inv-ctl"><div class="inv-rng">${ranges.map(r=>`<button data-r="${r}" class="${r===cur?'on':''}">${r}</button>`).join('')}</div>
+        <div class="inv-rng inv-zoom"><button data-z="out" aria-label="Alejar">−</button><button data-z="in" aria-label="Acercar">+</button></div></div></div>
       <div class="inv-chart-body"><div class="inv-load"></div></div></div>`;
   }
+  // Gráfico con ventana [a,b] sobre toda la serie: dedo/ratón = ver ese día; dos dedos = zoom y mover; ratón: arrastrar = mover, − / + = zoom, doble clic = todo.
   async function invFillChart(key, ps, masked, seriesFn){
     const box = document.getElementById('invBox-'+key); if(!box) return;
-    const body = box.querySelector('.inv-chart-body');
-    box.querySelectorAll('.inv-rng button').forEach(b=> b.onclick = ()=>{ box.dataset.rk = b.dataset.r; if(!seriesFn) invRange = b.dataset.r; box.querySelectorAll('.inv-rng button').forEach(x=>x.classList.toggle('on', x===b)); draw(); });
-    let all = null;
-    const draw = ()=>{ if(!all) return; const s = invCut(all, box.dataset.rk); body.innerHTML = invChartHtml(s, key); invWireChart(box, s, masked); };
+    const body = box.querySelector('.inv-chart-body'), lbl = box.querySelector('.inv-lbl'), il = box.dataset.ilbl || '';
+    let all = null, a = 0, b = 0;
+    const vis = ()=> all.slice(a, b+1);
+    const showEnd = ()=>{ const s = vis(); lbl.innerHTML = invChartLabel(s, s.length-1, masked, il); };
+    const draw = ()=>{ body.innerHTML = invChartHtml(vis(), key); showEnd(); };
+    const setRange = rk => {
+      a = 0; b = all.length-1;
+      const r = INV_RANGES.find(x=>x[0]===rk), n = r ? r[1] : 0;
+      if(n){ const cut = addDaysStr(todayStr(), -n); let i = all.findIndex(x=>x.d>=cut); if(i<0) i = all.length-2; a = Math.max(0, Math.min(i, all.length-2)); }
+    };
+    const setWin = (na, nl)=>{ nl = Math.max(Math.min(4, all.length-1), Math.min(all.length-1, Math.round(nl))); na = Math.max(0, Math.min(all.length-1-nl, Math.round(na))); if(na!==a || na+nl!==b){ a = na; b = na+nl; box.querySelectorAll('.inv-rng button[data-r]').forEach(x=>x.classList.remove('on')); draw(); } };
+    const zoom = (fx, f)=>{ const len = b-a, anchor = a + fx*len, nl = len*f; setWin(anchor - fx*nl, nl); };
+    box.querySelectorAll('.inv-rng button[data-r]').forEach(btn=> btn.onclick = ()=>{
+      box.dataset.rk = btn.dataset.r; if(!seriesFn) invRange = btn.dataset.r;
+      box.querySelectorAll('.inv-rng button[data-r]').forEach(x=>x.classList.toggle('on', x===btn));
+      if(all){ setRange(btn.dataset.r); draw(); }
+    });
+    box.querySelectorAll('.inv-zoom button').forEach(btn=> btn.onclick = ()=>{ if(all) zoom(1, btn.dataset.z==='in' ? 0.6 : 1/0.6); });
     try{ all = seriesFn ? await seriesFn() : await invSeries(ps); }
     catch(e){ body.innerHTML = '<div class="empty-note">No se ha podido cargar el histórico.</div>'; return; }
     if(!document.body.contains(box)) return;
-    if(all.length<2){ body.innerHTML = '<div class="empty-note">El gráfico aparece a partir del segundo día.</div>'; box.querySelector('.inv-lbl').innerHTML = all.length ? invChartLabel(all, 0, masked) : ''; return; }
-    draw();
+    if(all.length<2){ body.innerHTML = '<div class="empty-note">El gráfico aparece a partir del segundo día.</div>'; lbl.innerHTML = all.length ? invChartLabel(all, 0, masked, il) : ''; return; }
+    setRange(box.dataset.rk); draw();
+
+    const pts = new Map(); let pinch = null, drag = null;
+    const scrub = clientX => {
+      const svg = body.querySelector('.inv-svg'), cur = body.querySelector('.inv-cur'), dot = body.querySelector('.inv-dot'); if(!svg) return;
+      const s = vis(), r = svg.getBoundingClientRect(), x = Math.min(Math.max(clientX - r.left, 0), r.width);
+      const i = Math.round(x/r.width*(s.length-1)), vb = svg.viewBox.baseVal, px = 4 + i*(vb.width-8)/Math.max(1,s.length-1);
+      cur.setAttribute('x1', px); cur.setAttribute('x2', px); cur.style.display = '';
+      const vals = s.flatMap(o=>[o.v,o.i]); let lo = Math.min(...vals), hi = Math.max(...vals); const pad = (hi-lo)*0.08 || hi*0.05 || 1; lo -= pad; hi += pad;
+      const py = 12 + (vb.height-36)*(1-(s[i].v-lo)/(hi-lo));
+      dot.style.display = ''; dot.style.left = (px/vb.width*r.width)+'px'; dot.style.top = (py/vb.height*r.height)+'px';
+      lbl.innerHTML = invChartLabel(s, i, masked, il);
+    };
+    const unscrub = ()=>{ const cur = body.querySelector('.inv-cur'), dot = body.querySelector('.inv-dot'); if(cur) cur.style.display = 'none'; if(dot) dot.style.display = 'none'; showEnd(); };
+    body.style.touchAction = 'pan-y';
+    body.addEventListener('pointerdown', e=>{
+      pts.set(e.pointerId, e);
+      if(pts.size===2){ const [p1,p2] = [...pts.values()]; pinch = { d:Math.max(20, Math.abs(p1.clientX-p2.clientX)), a, len:b-a, cx:(p1.clientX+p2.clientX)/2 }; unscrub(); }
+      else if(e.pointerType==='mouse'){ drag = { x:e.clientX, a, moved:false }; }
+      else scrub(e.clientX);
+    });
+    body.addEventListener('pointermove', e=>{
+      if(pts.has(e.pointerId)) pts.set(e.pointerId, e);
+      const r = body.getBoundingClientRect();
+      if(pinch && pts.size>=2){
+        const [p1,p2] = [...pts.values()], d = Math.max(20, Math.abs(p1.clientX-p2.clientX)), cx = (p1.clientX+p2.clientX)/2;
+        const fx = (pinch.cx - r.left)/r.width, nl = pinch.len*pinch.d/d, anchor = pinch.a + fx*pinch.len;
+        setWin(anchor - fx*nl + (pinch.cx - cx)/r.width*nl, nl); return;
+      }
+      if(drag && e.buttons){ const di = (drag.x - e.clientX)/r.width*(b-a); if(Math.abs(e.clientX-drag.x)>4) drag.moved = true; if(drag.moved){ unscrub(); setWin(drag.a + di, b-a); return; } }
+      if(e.pointerType==='mouse' || pts.size===1) scrub(e.clientX);
+    });
+    const up = e=>{ pts.delete(e.pointerId); if(pts.size<2) pinch = null; if(e.pointerType==='mouse') drag = null; else if(!pts.size) unscrub(); };
+    body.addEventListener('pointerup', up); body.addEventListener('pointercancel', up);
+    body.addEventListener('pointerleave', e=>{ if(e.pointerType==='mouse'){ drag = null; unscrub(); } });
+    body.addEventListener('wheel', e=>{ if(!e.ctrlKey) return; e.preventDefault(); const r = body.getBoundingClientRect(); zoom((e.clientX-r.left)/r.width, e.deltaY>0 ? 1.15 : 1/1.15); }, { passive:false });
+    body.addEventListener('dblclick', ()=>{ setRange('Todo'); draw(); });
   }
   function invDonutHtml(items){
     const tot = items.reduce((s,x)=>s+x.v,0); if(!tot) return '';
@@ -5715,7 +5762,29 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
   function renderInv(){
     const ps = invActive(), all = invList(), closed = all.filter(p=>p.closed), t = invTotals(ps), M = privacyMode, desk = window.innerWidth>=1000;
     const realized = all.reduce((s,p)=>s+invRealized(p),0), hasSales = all.some(p=>invSales(p).length);
-    const ops = invOps();
+    // tabla: una fila por inversión (lo que tienes ahora; si está cerrada, lo que se vendió) y, al desplegar, una por operación
+    const opsFlat = [];
+    const groups = all.filter(p=>p.lots.length).map(p=>{
+      const rs = invFifo(p), op = rs.filter(r=>r.open), cl = rs.filter(r=>!r.open), base = op.length ? op : cl;
+      const units = sumF(base,'units'), cost = sumF(base,'cost'), out = sumF(base,'out');
+      const wavg = k => units ? base.reduce((s,r)=>s+r.units*(+k(r)||0),0)/units : 0;
+      return { p, open:op.length>0, units, cost, out, buyPx:wavg(r=>r.lot.price), sellPx: op.length ? op[0].sellPx : wavg(r=>r.sellPx),
+        first: base.map(r=>r.lot.date).sort()[0], lastSale: cl.map(r=>r.sellDate).sort().pop() || '',
+        kids: op.sort((x,y)=>y.lot.date.localeCompare(x.lot.date)).concat(cl.sort((x,y)=>y.sellDate.localeCompare(x.sellDate) || y.lot.date.localeCompare(x.lot.date))) };
+    }).sort((x,y)=> (y.open-x.open) || (x.open ? y.out-x.out : y.lastSale.localeCompare(x.lastSale)));
+    const opRowHtml = (o, attrs, tog)=>{
+      const g = o.out-o.cost, f = o.open ? ' op-fut' : '';
+      return `<tr ${attrs}>
+          <td class="op-name">${o.name ? `<span class="op-nm">${tog ? `<i class="op-tog">${ico('down',14)}</i>` : ''}<span><b>${escH(o.name)}</b><small>${escH(o.sub)}</small></span></span>` : `<small class="op-kidlbl">${escH(o.sub)}</small>`}</td>
+          <td>${fmtDay(o.date)}</td>
+          <td class="mono">${M ? '•••' : euro(o.cost)}<small>${M ? '' : fmtU(o.units)}</small></td>
+          <td class="mono">${fmtPx(o.buyPx, o.cur)}</td>
+          <td class="${f}">${o.open ? 'hoy' : fmtDay(o.sellDate)}</td>
+          <td class="mono${f}">${M ? '•••' : euro(o.out)}</td>
+          <td class="mono${f}">${fmtPx(o.sellPx, o.cur)}</td>
+          <td class="mono ${posCls(g)}${f}">${M ? '•••' : euroS(g)}</td>
+          <td class="mono ${posCls(g)}${f}">${pctS(o.cost ? g/o.cost : 0)}</td></tr>`;
+    };
     const rows = ps.map(p=>({ p, v:invValue(p), c:invCost(p), d:invDayChange(p) })).sort((a,b)=>b.v-a.v);
     const byAcc = {}; ps.forEach(p=>{ byAcc[p.account] = (byAcc[p.account]||0) + invValue(p); });
     const cashRows = invBrokers().map(id=>({ id, c:invCash(id) }));
@@ -5736,26 +5805,16 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
         ${invErr ? `<div class="inv-err">${invErr}</div>` : ''}
       </div>
       ${all.some(p=>p.lots.length) ? `<div class="cell">${invChartBox('all')}</div>` : ''}
-      ${ops.length ? `<div class="cell inv-ops-cell"><div class="section-title" style="margin:0 0 10px;">Operaciones</div>
+      ${groups.length ? `<div class="cell inv-ops-cell"><div class="section-title" style="margin:0 0 10px;">Operaciones</div>
         <div class="inv-ops-wrap"><table class="inv-ops"><thead><tr><th>Activo</th><th>Compra</th><th>Importe</th><th>Precio</th><th>Venta</th><th>Importe</th><th>Precio</th><th>Resultado</th><th>%</th></tr></thead>
-        <tbody>${ops.map((r,i)=>{ const g = r.out-r.cost, f = r.open ? ' op-fut' : '', cur = r.p.cur; return `<tr class="${r.open?'op-open':'op-done'}" data-op="${i}">
-          <td class="op-name"><b>${escH(r.p.name)}</b><small>${escH(r.p.symbol)}</small></td>
-          <td>${fmtDay(r.lot.date)}</td>
-          <td class="mono">${M ? '•••' : euro(r.cost)}<small>${M ? '' : fmtU(r.units)}</small></td>
-          <td class="mono">${fmtPx(r.lot.price, cur)}</td>
-          <td class="${f}">${r.open ? 'hoy' : fmtDay(r.sellDate)}</td>
-          <td class="mono${f}">${M ? '•••' : euro(r.out)}</td>
-          <td class="mono${f}">${fmtPx(r.sellPx, cur)}</td>
-          <td class="mono ${posCls(g)}${f}">${M ? '•••' : euroS(g)}</td>
-          <td class="mono ${posCls(g)}${f}">${pctS(r.cost ? g/r.cost : 0)}</td></tr>`; }).join('')}</tbody></table></div></div>` : ''}
+        <tbody>${groups.map(gr=>{
+          const many = gr.kids.length>1, isOpen = invOpenGrp.has(gr.p.id);
+          const head = opRowHtml({ name:gr.p.name, sub:gr.p.symbol+(many ? ' · '+gr.kids.length+' operaciones' : ''), date:gr.first, cost:gr.cost, units:gr.units, buyPx:gr.buyPx, open:gr.open, sellDate:gr.lastSale, out:gr.out, sellPx:gr.sellPx, cur:gr.p.cur },
+            `class="op-grp ${gr.open?'op-open':'op-done'}${isOpen?' on':''}" data-grp="${gr.p.id}"`, many);
+          const kids = many && isOpen ? gr.kids.map(r=> opRowHtml({ name:'', sub: r.open ? 'En cartera' : 'Vendida', date:r.lot.date, cost:r.cost, units:r.units, buyPx:r.lot.price, open:r.open, sellDate:r.sellDate, out:r.out, sellPx:r.sellPx, cur:gr.p.cur },
+            `class="op-kid ${r.open?'op-open':'op-done'}" data-op="${opsFlat.push(r)-1}"`, false)).join('') : '';
+          return head + kids; }).join('')}</tbody></table></div></div>` : ''}
       <div class="inv-cols ${ps.length>1 || accItems.length>1 ? 'two' : ''}"><div>
-        ${ps.length ? `<div class="section-title" style="margin:6px 4px 8px;">Posiciones</div>` : ''}
-        ${rows.map(({p,v,c,d})=>{ const g = v-c; return `<div class="cell inv-row" data-id="${p.id}">
-          <div class="inv-row-l"><div class="inv-name">${escH(p.name)}</div><div class="inv-sub">${escH(p.symbol)} · ${escH(accName(p.account))}</div></div>
-          <div class="inv-row-r"><div class="inv-val mono">${M ? MASK : euro(v)}</div>
-            <div class="inv-sub"><span class="${posCls(g)}">${pctS(c ? g/c : 0)}</span> · <span class="${posCls(d)}">hoy ${pctS(v-d ? d/(v-d) : 0)}</span></div></div>
-        </div>`; }).join('')}
-        ${closed.length ? `<div class="inv-sub" style="margin:2px 4px 10px;">${closed.map(p=>`<button class="inv-closed-link" data-id="${p.id}">${escH(p.name)}</button>`).join(' · ')}</div>` : ''}
         ${cashRows.length ? `<div class="section-title" style="margin:14px 4px 8px;">Efectivo</div>` + cashRows.map(r=>`<div class="cell inv-row inv-cash" data-acc="${r.id}">
           <div class="inv-row-l"><div class="inv-name">${escH(accName(r.id))}</div></div>
           <div class="inv-row-r"><div class="inv-val mono ${r.c<0?'neg':''}">${M ? MASK : euro(r.c)}</div></div></div>`).join('') : ''}
@@ -5766,8 +5825,12 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
         ${accItems.length>1 ? `<div class="cell"><div class="section-title" style="margin:0 0 12px;">Por cuenta</div>${invDonutHtml(accItems)}</div>` : ''}
       </div>` : ''}</div>
     `;
-    $app.querySelectorAll('tr[data-op]').forEach(tr=> tr.onclick = ()=> openInvOp(ops[+tr.dataset.op]));
-    $app.querySelectorAll('.inv-closed-link').forEach(b=> b.onclick = ()=> openInvDetail(b.dataset.id));
+    $app.querySelectorAll('tr.op-kid').forEach(tr=> tr.onclick = ()=> openInvOp(opsFlat[+tr.dataset.op]));
+    $app.querySelectorAll('tr.op-grp').forEach(tr=> tr.onclick = e=>{
+      const id = tr.dataset.grp;
+      if(tr.querySelector('.op-tog') && e.target.closest('td.op-name')){ if(invOpenGrp.has(id)) invOpenGrp.delete(id); else invOpenGrp.add(id); renderInv(); return; }
+      openInvDetail(id);
+    });
     $app.querySelectorAll('.inv-cash').forEach(r=> r.onclick = ()=> openInvCash(r.dataset.acc));
     const bk = document.getElementById('invBack'); if(bk) bk.onclick = ()=>{ activeTab = 'resumen'; render(); };
     document.getElementById('privacyToggle').onclick = ()=>{ privacyMode = !privacyMode; renderInv(); };
