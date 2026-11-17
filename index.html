@@ -1461,7 +1461,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
-  const APP_VERSION = '2026.11.17-1';
+  const APP_VERSION = '2026.11.17-2';
   const DEFAULT_STATE = {
     onboarded: false,
     accounts: [
@@ -5301,25 +5301,32 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
   const invList = ()=> Array.isArray(state.investments) ? state.investments : (state.investments = []);
   const invOf = accId => invList().filter(p=>p.account===accId);
   const invHasAcc = accId => Array.isArray(state.investments) && state.investments.some(p=>p.account===accId);
+  const invSales = p => Array.isArray(p.sales) ? p.sales : [];
+  const invActive = ()=> invList().filter(p=>!p.closed);
   const invPence = cur => cur==='GBp' || cur==='GBX' || cur==='ILA';
   const fxSym = cur => cur==='GBp'||cur==='GBX' ? 'GBPEUR=X' : cur==='ILA' ? 'ILSEUR=X' : cur+'EUR=X';
   function fxNow(cur){ if(!cur || cur==='EUR') return 1; const q = invQ[fxSym(cur)]; return q ? q.price*(invPence(cur)?0.01:1) : null; }
-  const invUnits = p => p.lots.reduce((s,l)=>s+(+l.units||0),0);
-  const invCost = p => p.lots.reduce((s,l)=>s+(+l.eur||0),0);
+  const sumF = (arr, f) => arr.reduce((s,x)=>s+(+x[f]||0),0);
+  function invUnitsAt(p, d, strict){ const ok = x => strict ? x.date<d : x.date<=d; return sumF(p.lots.filter(ok),'units') - sumF(invSales(p).filter(ok),'units'); }
+  const invUnits = p => sumF(p.lots,'units') - sumF(invSales(p),'units');
+  const invPaid = p => sumF(p.lots,'eur');                                   // aportado en total
+  const invSold = p => sumF(invSales(p),'eur');                              // cobrado en ventas
+  const invCost = p => Math.max(0, invPaid(p) - sumF(invSales(p),'cost'));   // coste de lo que queda
+  const invRealized = p => invSales(p).reduce((s,x)=>s+(+x.eur||0)-(+x.cost||0),0);
   function invValue(p){
+    const u = invUnits(p); if(u<=1e-9) return 0;
     const q = invQ[p.symbol], fx = fxNow(p.cur);
-    if(q && fx!=null) return invUnits(p)*q.price*fx;
-    return p.lots.length ? p.lots.reduce((s,l)=>s+(+l.units||0)*(+l.price||0)*(+l.fx||1),0) : 0; // sin cotización: a precio de compra
+    if(q && fx!=null) return u*q.price*fx;
+    const l = p.lots[p.lots.length-1]; return l ? u*(+l.price||0)*(+l.fx||1) : 0; // sin cotización: a precio de compra
   }
   function invDayChange(p){
     const q = invQ[p.symbol], fx = fxNow(p.cur);
-    if(!q || q.prev==null || fx==null) return 0;
-    const today = todayStr(), u = p.lots.filter(l=>l.date<today).reduce((s,l)=>s+(+l.units||0),0);
-    return u*(q.price-q.prev)*fx;
+    if(p.closed || !q || q.prev==null || fx==null) return 0;
+    return invUnitsAt(p, todayStr(), true)*(q.price-q.prev)*fx;
   }
   const invAccValue = accId => invOf(accId).reduce((s,p)=>s+invValue(p),0);
   function invTotals(ps){
-    ps = ps || invList();
+    ps = ps || invActive();
     const value = ps.reduce((s,p)=>s+invValue(p),0), cost = ps.reduce((s,p)=>s+invCost(p),0), day = ps.reduce((s,p)=>s+invDayChange(p),0);
     return { value, cost, gain:value-cost, pct: cost ? (value-cost)/cost : 0, day, dayPct: (value-day) ? day/(value-day) : 0 };
   }
@@ -5344,7 +5351,8 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     if(!force && Date.now()-invQAt < 55000) return false;
     if(invBusy) return invBusy;
     const syms = new Set();
-    invList().forEach(p=>{ syms.add(p.symbol); if(p.cur && p.cur!=='EUR') syms.add(fxSym(p.cur)); });
+    invActive().forEach(p=>{ syms.add(p.symbol); if(p.cur && p.cur!=='EUR') syms.add(fxSym(p.cur)); });
+    if(!syms.size) return false;
     invBusy = (async()=>{
       try{
         const d = await invCall({ op:'quotes', symbols:[...syms] });
@@ -5396,7 +5404,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
   let invPlanBusy = false, invPlanAt = 0;
   async function invRunPlans(){
     if(invPlanBusy || Date.now()-invPlanAt < 600000) return 0;
-    const ps = invList().filter(p=>p.plan && p.plan.on && p.plan.eur>0);
+    const ps = invList().filter(p=>!p.closed && p.plan && p.plan.on && p.plan.eur>0);
     if(!ps.length) return 0;
     invPlanBusy = true; invPlanAt = Date.now(); let n = 0;
     try{
@@ -5495,6 +5503,19 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     while(lo<=hi){ const m = (lo+hi)>>1; if(h.ds[m]<=day){ r = m; lo = m+1; } else hi = m-1; }
     return r>=0 ? h.c[r] : (h.c.length ? h.c[0] : null);
   }
+  async function invPriceOn(p, date){
+    let price, fx;
+    if(date >= todayStr()){
+      await invRefresh(true);
+      price = invQ[p.symbol] && invQ[p.symbol].price; fx = fxNow(p.cur);
+    } else {
+      const from = addDaysStr(date,-10);
+      price = priceAt(await invHist(p.symbol, from, '1d'), date);
+      fx = (!p.cur || p.cur==='EUR') ? 1 : priceAt(await invHist(fxSym(p.cur), from, '1d'), date)*(invPence(p.cur)?0.01:1);
+    }
+    if(!price || !fx) throw new Error('No hay precio para esa fecha');
+    return { price, fx };
+  }
   async function invMakeLot(p, date, eur, unitsIn){
     let price, fx;
     if(date >= todayStr()){
@@ -5518,19 +5539,22 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     const syms = new Set(); ps.forEach(p=>{ syms.add(p.symbol); if(p.cur && p.cur!=='EUR') syms.add(fxSym(p.cur)); });
     await Promise.all([...syms].map(async s=>{ hs[s] = await invHist(s, from, interval); }));
     const days = new Set(), today = todayStr();
-    ps.forEach(p=>{ hs[p.symbol].ds.forEach(d=>{ if(d>=first && d<today) days.add(d); }); p.lots.forEach(l=>{ if(l.date<today) days.add(l.date); }); });
+    const allClosed = ps.every(p=>p.closed), end = allClosed ? ps.map(p=>p.closed).sort().pop() : today;
+    ps.forEach(p=>{ hs[p.symbol].ds.forEach(d=>{ if(d>=first && d<today && d<=end) days.add(d); }); p.lots.concat(invSales(p)).forEach(l=>{ if(l.date<today) days.add(l.date); }); });
     const out = [...days].sort().map(d=>{
       let v = 0, i = 0;
       ps.forEach(p=>{
         const ls = p.lots.filter(l=>l.date<=d); if(!ls.length) return;
-        const u = ls.reduce((s,l)=>s+(+l.units||0),0);
+        const ss = invSales(p).filter(x=>x.date<=d);
+        const u = sumF(ls,'units') - sumF(ss,'units');
+        i += sumF(ls,'eur') - sumF(ss,'eur'); // dinero puesto menos dinero sacado
+        if(u<=1e-9) return;
         const fx = (!p.cur || p.cur==='EUR') ? 1 : priceAt(hs[fxSym(p.cur)], d)*(invPence(p.cur)?0.01:1);
         v += u*(priceAt(hs[p.symbol], d)||0)*(fx||0);
-        i += ls.reduce((s,l)=>s+(+l.eur||0),0);
       });
       return { d, v, i };
     });
-    const t = invTotals(ps); out.push({ d:today, v:t.value, i:t.cost });
+    if(!allClosed) out.push({ d:today, v:ps.reduce((s,p)=>s+invValue(p),0), i:ps.reduce((s,p)=>s+invPaid(p)-invSold(p),0) });
     return out;
   }
   function invCut(series){
@@ -5618,7 +5642,8 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
   }
 
   function renderInv(){
-    const ps = invList(), t = invTotals(ps), M = privacyMode, desk = window.innerWidth>=1000;
+    const ps = invActive(), all = invList(), closed = all.filter(p=>p.closed), t = invTotals(ps), M = privacyMode, desk = window.innerWidth>=1000;
+    const realized = all.reduce((s,p)=>s+invRealized(p),0), hasSales = all.some(p=>invSales(p).length);
     const rows = ps.map(p=>({ p, v:invValue(p), c:invCost(p), d:invDayChange(p) })).sort((a,b)=>b.v-a.v);
     const byAcc = {}; ps.forEach(p=>{ byAcc[p.account] = (byAcc[p.account]||0) + invValue(p); });
     const accItems = Object.entries(byAcc).map(([k,v])=>({ n:accName(k), v })).sort((a,b)=>b.v-a.v);
@@ -5633,9 +5658,10 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
           <span class="inv-chip ${posCls(t.gain)}">${M ? '•••' : euroS(t.gain)} · ${pctS(t.pct)}</span>
           <span class="inv-chip ${posCls(t.day)}">Hoy ${M ? '•••' : euroS(t.day)} · ${pctS(t.dayPct)}</span>
         </div>` : ''}
+        ${hasSales ? `<div class="inv-hero-s" style="margin-top:6px;"><span class="inv-chip ${posCls(realized)}">Realizado ${M ? '•••' : euroS(realized)}</span></div>` : ''}
         ${invErr ? `<div class="inv-err">${invErr}</div>` : ''}
       </div>
-      ${ps.length ? `<div class="cell">${invChartBox('all')}</div>` : ''}
+      ${all.some(p=>p.lots.length) ? `<div class="cell">${invChartBox('all')}</div>` : ''}
       <div class="inv-cols ${ps.length>1 || accItems.length>1 ? 'two' : ''}"><div>
         ${rows.map(({p,v,c,d})=>{ const g = v-c; return `<div class="cell inv-row" data-id="${p.id}">
           <div class="inv-row-l"><div class="inv-name">${escH(p.name)}</div><div class="inv-sub">${escH(p.symbol)} · ${escH(accName(p.account))}</div></div>
@@ -5643,6 +5669,10 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
             <div class="inv-sub"><span class="${posCls(g)}">${pctS(c ? g/c : 0)}</span> · <span class="${posCls(d)}">hoy ${pctS(v-d ? d/(v-d) : 0)}</span></div></div>
         </div>`; }).join('')}
         <button class="btn-primary" id="invAdd" style="margin-top:4px;">+ Añadir inversión</button>
+        ${closed.length ? `<div class="section-title" style="margin:20px 4px 8px;">Cerradas</div>` + closed.slice().sort((a,b)=>b.closed.localeCompare(a.closed)).map(p=>{ const r = invRealized(p), paid = invPaid(p); return `<div class="cell inv-row inv-closed" data-id="${p.id}">
+          <div class="inv-row-l"><div class="inv-name">${escH(p.name)}</div><div class="inv-sub">${fmtDay(p.closed)} · ${escH(accName(p.account))}</div></div>
+          <div class="inv-row-r"><div class="inv-val mono ${posCls(r)}">${M ? '•••' : euroS(r)}</div><div class="inv-sub"><span class="${posCls(r)}">${pctS(paid ? r/paid : 0)}</span></div></div>
+        </div>`; }).join('') : ''}
       </div>
       ${ps.length>1 || accItems.length>1 ? `<div>
         ${ps.length>1 ? `<div class="cell"><div class="section-title" style="margin:0 0 12px;">Reparto</div>${invDonutHtml(rows.map(r=>({ n:r.p.name, v:r.v })))}</div>` : ''}
@@ -5653,13 +5683,14 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     document.getElementById('privacyToggle').onclick = ()=>{ privacyMode = !privacyMode; renderInv(); };
     document.getElementById('invAdd').onclick = ()=> openInvSearch();
     $app.querySelectorAll('.inv-row').forEach(r=> r.onclick = ()=> openInvDetail(r.dataset.id));
-    if(ps.length) invFillChart('all', ps, M);
+    if(all.some(p=>p.lots.length)) invFillChart('all', all, M);
     invKick();
   }
 
   function invResumenCard(){
-    const ps = invList();
-    if(!ps.length) return `<button class="cell inv-card" id="invCard"><span class="inv-card-l"><span class="t-lbl">Inversiones</span></span><span class="inv-card-r">Añadir ›</span></button>`;
+    const ps = invActive();
+    if(!invList().length) return `<button class="cell inv-card" id="invCard"><span class="inv-card-l"><span class="t-lbl">Inversiones</span></span><span class="inv-card-r">Añadir ›</span></button>`;
+    if(!ps.length) return `<button class="cell inv-card" id="invCard"><span class="inv-card-l"><span class="t-lbl">Inversiones</span></span><span class="inv-card-r"><span class="inv-arr">›</span></span></button>`;
     const t = invTotals(ps), M = privacyMode;
     return `<button class="cell inv-card" id="invCard">
       <span class="inv-card-l"><span class="t-lbl">Inversiones</span><span class="inv-card-v mono ${M?'masked-val':''}">${M ? MASK : euro(t.value)}</span></span>
@@ -5738,6 +5769,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
         const lot = await invMakeLot(p, date, eur, units);
         const txId = invAddTx(p, eur, date, from); if(txId) lot.tx = txId;
         p.lots.push(lot); p.lots.sort((a,b)=>a.date.localeCompare(b.date));
+        if(p.closed && invUnits(p)>1e-9) delete p.closed;
         const rep = document.getElementById('ilRep');
         if(isNew && rep && rep.checked) p.plan = { on:true, eur, day:+date.slice(8,10), from, start:date, last:date };
         if(isNew) invList().push(p);
@@ -5751,34 +5783,47 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
   }
   function openInvDetail(id){
     const p = invList().find(x=>x.id===id); if(!p) return;
-    const q = invQ[p.symbol], v = invValue(p), c = invCost(p), u = invUnits(p), d = invDayChange(p), M = privacyMode;
+    const q = invQ[p.symbol], v = invValue(p), c = invCost(p), u = invUnits(p), d = invDayChange(p), M = privacyMode, cl = !!p.closed;
+    const real = invRealized(p), paid = invPaid(p), sales = invSales(p);
     const mv = x => M ? '•••' : x;
+    const txAcc = (id, k) => accName((state.transactions.find(t=>t.id===id)||{})[k]||'');
+    const moves = p.lots.map(l=>({ k:'b', x:l })).concat(sales.map(x=>({ k:'s', x }))).sort((a,b)=>b.x.date.localeCompare(a.x.date));
     $sheet.innerHTML = `<h2>${escH(p.name)} <span class="close-x" id="closeX">✕</span></h2>
-      <div class="inv-sub" style="margin:-6px 0 12px;">${escH(p.symbol)} · ${INV_TYPES[p.type]||p.type||''}${p.exch?' · '+escH(p.exch):''}</div>
+      <div class="inv-sub" style="margin:-6px 0 12px;">${escH(p.symbol)} · ${INV_TYPES[p.type]||p.type||''}${p.exch?' · '+escH(p.exch):''}${cl ? ' · Cerrada '+fmtDay(p.closed) : ''}</div>
       ${invChartBox('one')}
-      <div class="inv-stats">
+      <div class="inv-stats">${cl ? `
+        <div><span>Resultado</span><b class="mono ${posCls(real)}">${mv(euroS(real))} · ${pctS(paid ? real/paid : 0)}</b></div>
+        <div><span>Vendido</span><b class="mono">${mv(euro(invSold(p)))}</b></div>
+        <div><span>Aportado</span><b class="mono">${mv(euro(paid))}</b></div>
+        <div><span>Precio</span><b class="mono">${q ? fmtPx(q.price, q.cur) : '—'}</b></div>` : `
         <div><span>Valor</span><b class="mono">${mv(euro(v))}</b></div>
         <div><span>Ganancia</span><b class="mono ${posCls(v-c)}">${mv(euroS(v-c))} · ${pctS(c ? (v-c)/c : 0)}</b></div>
         <div><span>Aportado</span><b class="mono">${mv(euro(c))}</b></div>
         <div><span>Hoy</span><b class="mono ${posCls(d)}">${mv(euroS(d))}</b></div>
         <div><span>Precio</span><b class="mono">${q ? fmtPx(q.price, q.cur) : '—'}</b></div>
         <div><span>Participaciones</span><b class="mono">${mv(fmtU(u))}</b></div>
+        ${sales.length ? `<div><span>Realizado</span><b class="mono ${posCls(real)}">${mv(euroS(real))}</b></div>` : ''}`}
       </div>
       <div class="field" style="margin-top:14px;"><label>Cuenta</label><select id="idAcc">${state.accounts.map(a=>`<option value="${a.id}" ${a.id===p.account?'selected':''}>${escH(a.name)}</option>`).join('')}</select></div>
-      <div class="section-title" style="margin:16px 0 6px;">Compra mensual</div>
+      ${cl ? '' : `<div class="section-title" style="margin:16px 0 6px;">Compra mensual</div>
       ${p.plan && p.plan.on
         ? `<button class="inv-plan" id="idPlan"><span><b>Día ${p.plan.day} · ${mv(euro(p.plan.eur))}</b><small>${p.plan.from ? 'Desde '+escH(accName(p.plan.from))+' · ' : ''}${invNextPlanDate(p.plan) ? 'Próxima '+fmtDay(invNextPlanDate(p.plan)) : ''}</small></span><span class="inv-arr">›</span></button>`
-        : `<button class="btn-ghost" id="idPlan">Programar compra mensual</button>`}
-      <div class="section-title" style="margin:16px 0 6px;">Aportaciones</div>
-      ${p.lots.slice().reverse().map(l=>`<div class="exp-row inv-lot" data-edit="${l.id}"><div class="exp-name">${fmtDay(l.date)}${l.auto ? ' · mensual' : ''}${l.tx ? ' · '+escH(accName((state.transactions.find(t=>t.id===l.tx)||{}).account||'')) : ''}</div>
-        <div style="display:flex;align-items:center;gap:10px;"><span class="mono" style="font-weight:700;">${mv(euro(l.eur))}</span><span class="inv-sub mono">${mv(fmtU(l.units))}</span><i class="row-del" data-lot="${l.id}" title="Quitar">✕</i></div></div>`).join('')}
-      <button class="btn-primary" id="idAdd" style="margin-top:14px;">+ Añadir aportación</button>
+        : `<button class="btn-ghost" id="idPlan">Programar compra mensual</button>`}`}
+      <div class="section-title" style="margin:16px 0 6px;">Operaciones</div>
+      ${moves.map(({k,x})=> k==='b'
+        ? `<div class="exp-row inv-lot" data-edit="${x.id}"><div class="exp-name">${fmtDay(x.date)}${x.auto ? ' · mensual' : ''}${x.tx ? ' · '+escH(txAcc(x.tx,'account')) : ''}</div>
+            <div style="display:flex;align-items:center;gap:10px;"><span class="mono" style="font-weight:700;">${mv(euro(x.eur))}</span><span class="inv-sub mono">${mv(fmtU(x.units))}</span><i class="row-del" data-lot="${x.id}" title="Quitar">✕</i></div></div>`
+        : `<div class="exp-row inv-lot inv-sale"><div class="exp-name">${fmtDay(x.date)} · venta${x.tx ? ' · '+escH(txAcc(x.tx,'toAccount')) : ''}</div>
+            <div style="display:flex;align-items:center;gap:10px;"><span class="mono" style="font-weight:700;">−${mv(euro(x.eur))}</span><span class="inv-sub mono ${posCls(x.eur-x.cost)}">${mv(euroS(x.eur-x.cost))}</span><i class="row-del" data-sale="${x.id}" title="Quitar">✕</i></div></div>`).join('')}
+      <button class="btn-primary" id="idAdd" style="margin-top:14px;">+ ${cl ? 'Volver a comprar' : 'Añadir aportación'}</button>
+      ${cl ? '' : '<button class="btn-ghost" id="idSell" style="margin-top:8px;">Vender</button>'}
       <button class="btn-secondary" id="idDel" style="margin-top:8px;">Eliminar inversión</button>`;
     $overlay.classList.add('show');
     document.getElementById('closeX').onclick = ()=> $overlay.classList.remove('show');
     invFillChart('one', [p], M);
     document.getElementById('idAdd').onclick = ()=> openInvLot(p);
-    document.getElementById('idPlan').onclick = ()=> openInvPlan(p);
+    const pb = document.getElementById('idPlan'); if(pb) pb.onclick = ()=> openInvPlan(p);
+    const sb_ = document.getElementById('idSell'); if(sb_) sb_.onclick = ()=> openInvSell(p);
     $sheet.querySelectorAll('[data-edit]').forEach(r=> r.onclick = e=>{ if(e.target.closest('[data-lot]')) return; const l = p.lots.find(y=>y.id===r.dataset.edit); if(l) openInvLotEdit(p, l); });
     document.getElementById('idAcc').onchange = async e=>{ p.account = e.target.value; await saveState(); showToast('Cuenta cambiada'); renderInv(); };
     const dropTx = ids => { const s = new Set(ids.filter(Boolean)); if(s.size) state.transactions = state.transactions.filter(t=>!s.has(t.id)); };
@@ -5787,15 +5832,78 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
       const l = p.lots.find(y=>y.id===x.dataset.lot); if(!l) return;
       if(!confirm('¿Quitar la aportación del '+fmtDay(l.date)+'?' + (l.tx ? ' También se borra su movimiento.' : ''))) return;
       p.lots = p.lots.filter(y=>y!==l); dropTx([l.tx]);
-      if(!p.lots.length) state.investments = invList().filter(y=>y!==p);
+      if(!p.lots.length){ dropTx(sales.map(y=>y.tx)); state.investments = invList().filter(y=>y!==p); }
       await saveState(); renderInv();
       if(p.lots.length) openInvDetail(p.id); else $overlay.classList.remove('show');
     });
+    $sheet.querySelectorAll('[data-sale]').forEach(x=> x.onclick = async e=>{
+      e.stopPropagation();
+      const sl = sales.find(y=>y.id===x.dataset.sale); if(!sl) return;
+      if(!confirm('¿Quitar la venta del '+fmtDay(sl.date)+'?' + (sl.tx ? ' También se borra su movimiento.' : ''))) return;
+      p.sales = sales.filter(y=>y!==sl); dropTx([sl.tx]); delete p.closed;
+      await saveState(); renderInv(); openInvDetail(p.id);
+    });
     document.getElementById('idDel').onclick = async ()=>{
-      const n = p.lots.filter(l=>l.tx).length;
-      if(!confirm('¿Eliminar '+p.name+'?' + (n ? ' También se borran sus '+n+' movimiento(s).' : ''))) return;
-      dropTx(p.lots.map(l=>l.tx)); state.investments = invList().filter(y=>y!==p);
+      const n = p.lots.filter(l=>l.tx).length + sales.filter(l=>l.tx).length;
+      if(!confirm('¿Eliminar '+p.name+' y todo su historial?' + (n ? ' También se borran sus '+n+' movimiento(s).' : ''))) return;
+      dropTx(p.lots.concat(sales).map(l=>l.tx)); state.investments = invList().filter(y=>y!==p);
       await saveState(); $overlay.classList.remove('show'); showToast('Inversión eliminada'); renderInv();
+    };
+  }
+  function openInvSell(p){
+    const dest = state.accounts.filter(a=>!a.manual && a.id!==p.account);
+    const def = (dest.find(a=>a.type==='corriente') || {}).id || '';
+    $sheet.innerHTML = `<h2>Vender <span class="close-x" id="closeX">✕</span></h2>
+      <div class="inv-sub" style="margin:-6px 0 14px;">${escH(p.name)}</div>
+      <div class="seg" id="isMode"><button data-m="all" class="active">Todo</button><button data-m="part">Una parte</button></div>
+      <div class="two-col">
+        <div class="field"><label>Fecha</label><input type="date" id="isDate" value="${todayStr()}" max="${todayStr()}"></div>
+        <div class="field"><label>Importe recibido (€)</label><input type="number" id="isEur" inputmode="decimal" step="0.01" min="0" placeholder="Automático"></div>
+      </div>
+      <div class="field" id="isUnitsW" style="display:none;"><label>Participaciones</label><input type="number" id="isUnits" inputmode="decimal" step="any" min="0" placeholder="${fmtU(invUnits(p))}"></div>
+      <div class="field"><label>Va a</label><select id="isTo"><option value="">Ninguna</option>${dest.map(a=>`<option value="${a.id}" ${a.id===def?'selected':''}>${escH(a.name)}</option>`).join('')}</select></div>
+      <div class="auth-err" id="isErr"></div>
+      <button class="btn-primary" id="isSave">Vender</button>`;
+    $overlay.classList.add('show');
+    document.getElementById('closeX').onclick = ()=> openInvDetail(p.id);
+    let all = true;
+    document.querySelectorAll('#isMode button').forEach(b=> b.onclick = ()=>{
+      all = b.dataset.m==='all';
+      document.querySelectorAll('#isMode button').forEach(x=>x.classList.toggle('active', x===b));
+      document.getElementById('isUnitsW').style.display = all ? 'none' : '';
+    });
+    const err = m => { document.getElementById('isErr').textContent = m||''; };
+    document.getElementById('isSave').onclick = async ()=>{
+      const btn = document.getElementById('isSave');
+      const date = document.getElementById('isDate').value, to = document.getElementById('isTo').value;
+      const eurIn = parseFloat(String(document.getElementById('isEur').value).replace(',','.')) || 0;
+      const unitsIn = all ? 0 : (parseFloat(String(document.getElementById('isUnits').value).replace(',','.')) || 0);
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){ err('Pon la fecha'); return; }
+      const held = invUnitsAt(p, date, false);
+      if(held<=1e-9){ err('Ese día no tenías participaciones'); return; }
+      if(!all && !(unitsIn>0) && !(eurIn>0)){ err('Pon el importe o las participaciones'); return; }
+      err(''); btn.disabled = true; btn.textContent = 'Calculando…';
+      try{
+        const { price, fx } = await invPriceOn(p, date);
+        let units, eur;
+        if(all){ units = held; eur = eurIn>0 ? eurIn : units*price*fx; }
+        else if(unitsIn>0){ units = unitsIn; eur = eurIn>0 ? eurIn : units*price*fx; }
+        else { eur = eurIn; units = eur/(price*fx); }
+        if(units > held*(1+1e-6)+1e-9) throw new Error('Ese día tenías '+fmtU(held));
+        units = Math.min(units, held);
+        const basis = sumF(p.lots.filter(l=>l.date<=date),'eur') - sumF(invSales(p).filter(x=>x.date<=date),'cost');
+        const sale = { id:uid(), date, units, eur, price: eur/(units*fx), fx, cost: basis*units/held };
+        if(to){
+          const toA = state.accounts.find(a=>a.id===to);
+          const tx = { id:uid(), ts:Date.now(), type:'Movimiento', account:p.account, toAccount:to, category: toA && toA.type==='ahorro' ? 'Ahorro' : 'Transferencia', amount:eur, comment:'Venta · '+p.name.slice(0,40), date, inv:p.id };
+          state.transactions.push(tx); sale.tx = tx.id;
+        }
+        p.sales = invSales(p).concat(sale).sort((a,b)=>a.date.localeCompare(b.date));
+        if(invUnits(p) <= 1e-6*Math.max(1, sumF(p.lots,'units'))){ p.closed = p.sales[p.sales.length-1].date; if(p.plan) p.plan.on = false; }
+        await saveState();
+        showToast(p.closed ? 'Inversión cerrada' : 'Venta apuntada');
+        renderInv(); openInvDetail(p.id);
+      }catch(e){ err(e && e.message ? e.message : 'No se ha podido guardar'); btn.disabled = false; btn.textContent = 'Vender'; }
     };
   }
 
