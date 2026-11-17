@@ -699,7 +699,7 @@
   .inv-legend i{width:10px;height:10px;border-radius:3px;flex-shrink:0;}
   .inv-legend span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .inv-lot .row-del{font-style:normal;}
-  .inv-ops-cell{padding:16px 0 10px;}
+  .inv-ops-cell{padding:16px 0 14px;overflow:hidden;}
   .inv-ops-cell .section-title{padding:0 16px;}
   .inv-ops-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
   .inv-ops{border-collapse:separate;border-spacing:0;width:100%;font-size:12.5px;white-space:nowrap;}
@@ -722,8 +722,9 @@
   .inv-ops .op-tog{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:6px;background:var(--bg);color:var(--muted);font-style:normal;flex-shrink:0;transition:transform .2s;}
   .inv-ops tr.on .op-tog{transform:rotate(180deg);}
   .inv-ops tr.op-grp td{font-weight:700;}
-  .inv-ops tr.op-kid td{font-size:12px;background:var(--bg);}
-  .inv-ops tr.op-kid td:first-child{border-left:3px solid var(--line);}
+  .inv-ops tr.op-kid td{font-size:12px;}
+  .inv-ops tr.op-kid td:first-child{padding-left:30px;}
+  .inv-ops tr.op-kid:last-child td{border-bottom:1px solid var(--line);}
   .inv-alert.fired .exp-name{color:var(--muted);}
   .inv-re{border:none;background:none;font:inherit;font-size:12px;font-weight:700;color:var(--acc, var(--green));cursor:pointer;padding:0;}
   .inv-closed-link{border:none;background:none;font:inherit;color:var(--muted);text-decoration:underline;cursor:pointer;padding:0;}
@@ -1491,7 +1492,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
-  const APP_VERSION = '2026.11.17-6';
+  const APP_VERSION = '2026.11.17-7';
   const DEFAULT_STATE = {
     onboarded: false,
     accounts: [
