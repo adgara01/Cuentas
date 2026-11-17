@@ -1518,7 +1518,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
-  const APP_VERSION = '2026.11.17-9';
+  const APP_VERSION = '2026.11.17-10';
   const DEFAULT_STATE = {
     onboarded: false,
     accounts: [
@@ -6044,6 +6044,15 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
   }
 
   // ---------- hojas: buscar, aportar, detalle ----------
+  const INV_SUGERIDOS = [
+    { symbol:'^GSPC', name:'S&P 500', type:'INDEX', exch:'Índice' },
+    { symbol:'SXR8.DE', name:'iShares Core S&P 500 UCITS ETF (en €)', type:'ETF', exch:'XETRA' },
+    { symbol:'EUNL.DE', name:'iShares Core MSCI World UCITS ETF (en €)', type:'ETF', exch:'XETRA' },
+    { symbol:'^NDX', name:'Nasdaq 100', type:'INDEX', exch:'Índice' },
+    { symbol:'^IBEX', name:'IBEX 35', type:'INDEX', exch:'Índice' },
+    { symbol:'^STOXX50E', name:'Euro Stoxx 50', type:'INDEX', exch:'Índice' },
+    { symbol:'BTC-EUR', name:'Bitcoin', type:'CRYPTOCURRENCY', exch:'en €' }
+  ];
   function openInvSearch(mode, q0){
     const fav = mode==='fav';
     $sheet.innerHTML = `<h2>${fav ? 'Añadir favorito' : 'Añadir inversión'} <span class="close-x" id="closeX">✕</span></h2>
@@ -6054,30 +6063,34 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     const q = document.getElementById('invQ'), res = document.getElementById('invRes');
     setTimeout(()=>{ q.focus(); try{ q.setSelectionRange(q.value.length, q.value.length); }catch(e){} }, 60);
     let tm = null, seq = 0;
+    const pick = async hit => {
+      if(!fav){ openInvLot(null, hit); return; }
+      if(invWatch().some(w=>w.symbol===hit.symbol)){ openWatch(hit.symbol); return; }
+      let cur = '';
+      try{ const qd = await invCall({ op:'quotes', symbols:[hit.symbol] }); const qq = qd.quotes && qd.quotes[hit.symbol]; if(qq){ invQ[hit.symbol] = qq; cur = qq.cur || ''; } }catch(e){}
+      invWatch().push({ symbol:hit.symbol, name:hit.name, type:hit.type, exch:hit.exch, cur });
+      await saveState(); renderInv(); openWatch(hit.symbol);
+    };
+    const show = (items, title)=>{
+      res.innerHTML = (title ? `<div class="section-title" style="margin:4px 2px 2px;">${title}</div>` : '') + (items.length ? items.map((x,i)=>`<button class="inv-hit" data-i="${i}"><span><b>${escH(x.name)}</b><small>${escH(x.symbol)} · ${escH(x.exch)}</small></span><span class="am-tag">${INV_TYPES[x.type]||x.type}</span></button>`).join('') : '<div class="empty-note">Sin resultados.</div>');
+      res.querySelectorAll('.inv-hit').forEach(b=> b.onclick = ()=> pick(items[+b.dataset.i]));
+    };
+    const sug = ()=>{ const l = INV_SUGERIDOS.filter(x=>!invWatch().some(w=>w.symbol===x.symbol)); if(fav && l.length) show(l, 'Sugeridos'); else res.innerHTML = ''; };
     q.oninput = ()=>{
       clearTimeout(tm);
       const v = q.value.trim();
-      if(v.length<2){ res.innerHTML = ''; return; }
+      if(v.length<2){ sug(); return; }
       res.innerHTML = '<div class="inv-load"></div>';
       tm = setTimeout(async ()=>{
         const my = ++seq;
         try{
           const d = await invCall({ op:'search', q:v, idx:fav });
           if(my!==seq) return;
-          const items = d.items||[];
-          res.innerHTML = items.length ? items.map((x,i)=>`<button class="inv-hit" data-i="${i}"><span><b>${escH(x.name)}</b><small>${escH(x.symbol)} · ${escH(x.exch)}</small></span><span class="am-tag">${INV_TYPES[x.type]||x.type}</span></button>`).join('') : '<div class="empty-note">Sin resultados.</div>';
-          res.querySelectorAll('.inv-hit').forEach(b=> b.onclick = async ()=>{
-            const hit = items[+b.dataset.i];
-            if(!fav){ openInvLot(null, hit); return; }
-            if(invWatch().some(w=>w.symbol===hit.symbol)){ openWatch(hit.symbol); return; }
-            let cur = '';
-            try{ const qd = await invCall({ op:'quotes', symbols:[hit.symbol] }); const q = qd.quotes && qd.quotes[hit.symbol]; if(q){ invQ[hit.symbol] = q; cur = q.cur || ''; } }catch(e){}
-            invWatch().push({ symbol:hit.symbol, name:hit.name, type:hit.type, exch:hit.exch, cur });
-            await saveState(); renderInv(); openWatch(hit.symbol);
-          });
+          show(d.items||[]);
         }catch(e){ if(my===seq) res.innerHTML = '<div class="empty-note">No se ha podido buscar. Prueba otra vez.</div>'; }
       }, 350);
     };
+    sug();
     if(q0){ q.value = q0; q.oninput(); }
   }
   function openInvLot(pos, hit){
