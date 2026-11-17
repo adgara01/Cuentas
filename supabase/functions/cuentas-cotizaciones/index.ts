@@ -3,7 +3,7 @@
 // nombre "cuentas-cotizaciones", pegar este archivo y Deploy. No necesita secrets.
 //
 // La app la llama con supabase.functions.invoke('cuentas-cotizaciones', { body }) y body:
-//   { op:'search', q:'amazon' }                         -> { items:[{symbol,name,type,exch}] }
+//   { op:'search', q:'amazon', idx?:true }              -> { items:[{symbol,name,type,exch}] }  (idx: incluye índices)
 //   { op:'quotes', symbols:['AMZN','USDEUR=X'] }         -> { quotes:{ AMZN:{price,prev,cur,time,name} | null } }
 //   { op:'chart',  symbol:'AMZN', from:'2025-01-01', interval:'1d'|'1wk' } -> { cur, t:[seg], c:[cierre] }
 
@@ -67,7 +67,7 @@ Deno.serve(async (req) => {
       if (q.length < 2) return json({ items: [] });
       const j = await yget(`/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=15&newsCount=0&listsCount=0`, 3_600_000);
       const items = (j.quotes || [])
-        .filter((x: any) => TYPES.has(x.quoteType) && x.symbol)
+        .filter((x: any) => (TYPES.has(x.quoteType) || (b.idx && x.quoteType === 'INDEX')) && x.symbol)
         .map((x: any) => ({ symbol: x.symbol, name: x.longname || x.shortname || x.symbol, type: x.quoteType, exch: x.exchDisp || x.exchange || '' }));
       return json({ items });
     }

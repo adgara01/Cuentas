@@ -724,6 +724,8 @@
   .inv-ops tr.op-grp td{font-weight:700;}
   .inv-ops tr.op-kid td{font-size:12px;background:var(--bg);}
   .inv-ops tr.op-kid td:first-child{border-left:3px solid var(--line);}
+  .inv-alert.fired .exp-name{color:var(--muted);}
+  .inv-re{border:none;background:none;font:inherit;font-size:12px;font-weight:700;color:var(--acc, var(--green));cursor:pointer;padding:0;}
   .inv-closed-link{border:none;background:none;font:inherit;color:var(--muted);text-decoration:underline;cursor:pointer;padding:0;}
   .inv-lot{cursor:pointer;}
   .inv-plan{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;text-align:left;border:none;background:var(--bg);border-radius:14px;padding:12px 14px;font-family:inherit;color:var(--ink);cursor:pointer;}
@@ -845,10 +847,12 @@
 
   /* ---------- sheet / modal ---------- */
   .overlay{position:fixed;inset:0;background:rgba(28,30,33,0.42);z-index:100;display:none;align-items:flex-end;justify-content:center;}
-  .overlay.show{display:flex;}
+  .overlay.show{display:flex;overscroll-behavior:contain;touch-action:none;}
+  .overlay.show .sheet{touch-action:pan-y;}
+  body.sheet-lock{position:fixed;left:0;right:0;overflow:hidden;}
   .sheet{
     background:var(--cell);width:100%;max-width:480px;border-top:none;border-radius:24px 24px 0 0;
-    padding:20px 18px calc(24px + env(safe-area-inset-bottom));max-height:88vh;overflow-y:auto;animation:sheetUp .2s ease;
+    padding:20px 18px calc(24px + env(safe-area-inset-bottom));max-height:88vh;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;animation:sheetUp .2s ease;
     box-shadow:0 -8px 30px rgba(20,20,25,0.15);
   }
   @keyframes sheetUp{from{transform:translateY(24px);opacity:0;}to{transform:translateY(0);opacity:1;}}
@@ -1487,7 +1491,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
-  const APP_VERSION = '2026.11.17-5';
+  const APP_VERSION = '2026.11.17-6';
   const DEFAULT_STATE = {
     onboarded: false,
     accounts: [
@@ -5124,7 +5128,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
   // ---- Enlaces desde un aviso: #mov=ID abre ese movimiento, #pend=ID abre ese pendiente ----
   let pendingLink = null;
   function parseLink(u){
-    try{ const h = String(u||'').split('#')[1] || ''; const m = /^(mov|pend)=(.+)$/.exec(decodeURIComponent(h)); return m ? { k:m[1], id:m[2] } : null; }catch(e){ return null; }
+    try{ const h = String(u||'').split('#')[1] || ''; const m = /^(mov|pend|inv|fav)=(.+)$/.exec(decodeURIComponent(h)); return m ? { k:m[1], id:m[2] } : null; }catch(e){ return null; }
   }
   function handleDeepLink(url){
     const L = url ? parseLink(url) : (pendingLink || parseLink(location.hash));
@@ -5132,6 +5136,11 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     if(!L) return;
     try{ history.replaceState(null, '', location.pathname + location.search); }catch(e){}
     if(!me){ pendingLink = L; return; }
+    if(L.k==='inv' || L.k==='fav'){
+      activeTab = 'inv'; render(); window.scrollTo(0,0);
+      setTimeout(()=>{ try{ if(L.k==='inv' && invList().some(p=>p.id===L.id)) openInvDetail(L.id); else if(L.k==='fav') openWatch(L.id); }catch(e){} }, 120);
+      return;
+    }
     const t = state.transactions.find(x=>x.id===L.id);
     if(L.k==='pend' && t && t.pending){
       activeTab = 'pend'; render(); window.scrollTo(0,0);
@@ -5318,7 +5327,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
   }, true);
 
   // ================= INVERSIONES (precios: Edge Function cuentas-cotizaciones → Yahoo Finance) =================
-  const INV_TYPES = { EQUITY:'Acción', ETF:'ETF', MUTUALFUND:'Fondo', CRYPTOCURRENCY:'Cripto' };
+  const INV_TYPES = { EQUITY:'Acción', ETF:'ETF', MUTUALFUND:'Fondo', CRYPTOCURRENCY:'Cripto', INDEX:'Índice' };
   const INV_COLORS = ['var(--acc, var(--green))','var(--cat-violet)','var(--cat-blue)','var(--amber)','var(--green)','var(--red-mid)','var(--ink-soft)'];
   const INV_RANGES = [['1M',30],['3M',91],['6M',182],['1A',365],['Todo',0]];
   let invQ = {}; try{ invQ = JSON.parse(localStorage.getItem('cuentas-inv-q')||'{}') || {}; }catch(e){ invQ = {}; }
@@ -5426,11 +5435,12 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     return data;
   }
   async function invRefresh(force){
-    if(!invList().length) return false;
+    if(!invList().length && !invWatch().length) return false;
     if(!force && Date.now()-invQAt < 55000) return false;
     if(invBusy) return invBusy;
     const syms = new Set();
     invActive().forEach(p=>{ syms.add(p.symbol); if(p.cur && p.cur!=='EUR') syms.add(fxSym(p.cur)); });
+    invWatch().forEach(w=> syms.add(w.symbol));
     if(!syms.size) return false;
     invBusy = (async()=>{
       try{
@@ -5650,14 +5660,15 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
   const fmtDay = d => new Date(d+'T12:00:00').toLocaleDateString('es-ES',{day:'numeric',month:'short',year:'2-digit'});
   function invChartHtml(series, key){
     const W = 600, H = 210, L = 4, R = 4, T = 12, B = 24;
-    const vals = series.flatMap(x=>[x.v,x.i]);
+    const pxMode = series[0].i==null; // solo cotización (favoritos)
+    const vals = series.flatMap(x=>[x.v,x.i]).filter(v=>v!=null);
     let lo = Math.min(...vals), hi = Math.max(...vals); const pad = (hi-lo)*0.08 || hi*0.05 || 1; lo -= pad; hi += pad;
     const X = i => L + (series.length>1 ? i*(W-L-R)/(series.length-1) : (W-L-R)/2);
     const Y = v => T + (H-T-B)*(1-(v-lo)/(hi-lo));
     const line = series.map((x,i)=>(i?'L':'M')+X(i).toFixed(1)+' '+Y(x.v).toFixed(1)).join(' ');
     const area = line + ` L${X(series.length-1).toFixed(1)} ${H-B} L${X(0).toFixed(1)} ${H-B} Z`;
-    let inv = ''; series.forEach((x,i)=>{ inv += (i ? 'H'+X(i).toFixed(1)+' V' : 'M'+X(0).toFixed(1)+' ') + Y(x.i).toFixed(1) + ' '; });
-    const up = series[series.length-1].v - series[0].v - (series[series.length-1].i - series[0].i) >= 0;
+    let inv = ''; if(!pxMode) series.forEach((x,i)=>{ inv += (i ? 'H'+X(i).toFixed(1)+' V' : 'M'+X(0).toFixed(1)+' ') + Y(x.i).toFixed(1) + ' '; });
+    const up = pxMode ? series[series.length-1].v >= series[0].v : series[series.length-1].v - series[0].v - (series[series.length-1].i - series[0].i) >= 0;
     const col = up ? 'var(--green)' : 'var(--red)';
     const ticks = series.length>2 ? [0, Math.floor((series.length-1)/2), series.length-1] : [0, series.length-1];
     return `<svg class="inv-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" data-key="${key}">
@@ -5673,6 +5684,11 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
   }
   function invChartLabel(series, i, masked, ilbl){
     const a = series[0], b = series[i];
+    if(b.i==null){
+      const ch = a.v ? b.v/a.v-1 : 0;
+      return `<div class="inv-lbl-v mono">${fmtPx(b.v, b.c)}</div>
+        <div class="inv-lbl-s"><span class="inv-chip ${posCls(ch)}">${pctS(ch)}</span><span>${fmtDay(b.d)}</span></div>`;
+    }
     const perf = b.v - a.v - (b.i - a.i), base = a.v + (b.i - a.i);
     const head = fmtDay(b.d) + (b.d===todayStr() ? '' : '');
     const pxs = b.px ? Object.entries(b.px).slice(0,3).map(([s,x])=>`<span class="inv-px">${escH(s)} ${fmtPx(x.p, x.c)}</span>`).join('') : '';
@@ -5721,7 +5737,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
       const s = vis(), r = svg.getBoundingClientRect(), x = Math.min(Math.max(clientX - r.left, 0), r.width);
       const i = Math.round(x/r.width*(s.length-1)), vb = svg.viewBox.baseVal, px = 4 + i*(vb.width-8)/Math.max(1,s.length-1);
       cur.setAttribute('x1', px); cur.setAttribute('x2', px); cur.style.display = '';
-      const vals = s.flatMap(o=>[o.v,o.i]); let lo = Math.min(...vals), hi = Math.max(...vals); const pad = (hi-lo)*0.08 || hi*0.05 || 1; lo -= pad; hi += pad;
+      const vals = s.flatMap(o=>[o.v,o.i]).filter(v=>v!=null); let lo = Math.min(...vals), hi = Math.max(...vals); const pad = (hi-lo)*0.08 || hi*0.05 || 1; lo -= pad; hi += pad;
       const py = 12 + (vb.height-36)*(1-(s[i].v-lo)/(hi-lo));
       dot.style.display = ''; dot.style.left = (px/vb.width*r.width)+'px'; dot.style.top = (py/vb.height*r.height)+'px';
       lbl.innerHTML = invChartLabel(s, i, masked, il);
@@ -5759,8 +5775,109 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
       <div class="inv-legend">${items.map((x,i)=>`<div><i style="background:${INV_COLORS[i%INV_COLORS.length]}"></i><span>${escH(x.n)}</span><b class="mono">${(x.v/tot*100).toLocaleString('es-ES',{maximumFractionDigits:1})}%</b></div>`).join('')}</div></div>`;
   }
 
+  // ---------- hojas: el fondo no se mueve mientras hay una abierta ----------
+  (function(){
+    let y = 0, locked = false;
+    new MutationObserver(()=>{
+      const on = $overlay.classList.contains('show');
+      if(on && !locked){ y = window.scrollY; document.body.style.top = (-y)+'px'; document.body.classList.add('sheet-lock'); locked = true; }
+      else if(!on && locked){ document.body.classList.remove('sheet-lock'); document.body.style.top = ''; window.scrollTo(0, y); locked = false; }
+    }).observe($overlay, { attributes:true, attributeFilter:['class'] });
+  })();
+
+  // ---------- favoritos: seguir índices y valores ----------
+  const invWatch = ()=> Array.isArray(state.watch) ? state.watch : (state.watch = []);
+  async function invWatchSeries(w){
+    const h = await invHist(w.symbol, addDaysStr(todayStr(), -1095), '1d'), today = todayStr();
+    const out = h.ds.map((d,i)=>({ d, v:h.c[i], i:null, c:w.cur||h.cur })).filter(x=>x.d<today);
+    const q = invQ[w.symbol]; if(q) out.push({ d:today, v:q.price, i:null, c:q.cur });
+    return out;
+  }
+  function openWatch(sym){
+    const w = invWatch().find(x=>x.symbol===sym); if(!w) return;
+    const q = invQ[w.symbol], ch = q && q.prev ? q.price/q.prev-1 : 0;
+    $sheet.innerHTML = `<h2>${escH(w.name)} <span class="close-x" id="closeX">✕</span></h2>
+      <div class="inv-sub" style="margin:-6px 0 12px;">${escH(w.symbol)} · ${INV_TYPES[w.type]||w.type||''}${w.exch?' · '+escH(w.exch):''}</div>
+      ${invChartBox('fav', ['1M','3M','6M','1A','Todo'], '1A')}
+      <div class="inv-stats"><div><span>Precio</span><b class="mono">${q ? fmtPx(q.price, q.cur) : '—'}</b></div><div><span>Hoy</span><b class="mono ${posCls(ch)}">${pctS(ch)}</b></div></div>
+      ${invAlertsHtml({ symbol:w.symbol })}
+      ${w.type!=='INDEX' ? '<button class="btn-ghost" id="wBuy" style="margin-top:8px;">Comprar</button>' : ''}
+      <button class="btn-secondary" id="wDel" style="margin-top:8px;">Quitar de favoritos</button>`;
+    $overlay.classList.add('show');
+    document.getElementById('closeX').onclick = ()=> $overlay.classList.remove('show');
+    invFillChart('fav', null, false, ()=>invWatchSeries(w));
+    invWireAlerts({ symbol:w.symbol, name:w.name, cur:(q && q.cur) || w.cur, now:{ precio: q ? q.price : null } }, ()=>openWatch(sym));
+    const bb = document.getElementById('wBuy'); if(bb) bb.onclick = ()=> openInvLot(null, { symbol:w.symbol, name:w.name, type:w.type, exch:w.exch });
+    document.getElementById('wDel').onclick = async ()=>{ state.watch = invWatch().filter(x=>x.symbol!==sym); await saveState(); $overlay.classList.remove('show'); renderInv(); };
+    if(invAlerts==null) invLoadAlerts().then(()=>{ if($overlay.classList.contains('show') && document.getElementById('invBox-fav')) openWatch(sym); });
+  }
+
+  // ---------- avisos de precio o valor (tabla cuentas_alertas; los comprueba la función cuentas-alertas cada 10 min) ----------
+  let invAlerts = null, invAlertsAt = 0, invAlertsErr = '';
+  async function invLoadAlerts(force){
+    if(!sb || !me) return;
+    if(!force && invAlerts && Date.now()-invAlertsAt < 60000) return;
+    try{
+      const { data, error } = await sb.from('cuentas_alertas').select('*').eq('user_id', me.id).order('created_at');
+      if(error) throw error;
+      invAlerts = data || []; invAlertsErr = '';
+    }catch(e){ invAlerts = invAlerts || []; invAlertsErr = 'Avisos no disponibles todavía'; }
+    invAlertsAt = Date.now();
+  }
+  const alertTxt = a => (a.kind==='valor' ? 'Mi posición ' : 'Precio ') + (a.op==='>=' ? 'sube a ' : 'baja a ') + (a.kind==='valor' ? euro(+a.target) : fmtPx(+a.target, a.cur));
+  function invAlertsHtml(ctx){
+    const list = (invAlerts||[]).filter(a=> ctx.inv_id ? a.inv_id===ctx.inv_id : (!a.inv_id && a.symbol===ctx.symbol));
+    return `<div class="section-title" style="margin:16px 0 6px;">Avisos</div>
+      ${list.map(a=>`<div class="exp-row inv-alert ${a.fired_at?'fired':''}"><div class="exp-name">${escH(alertTxt(a))}${a.fired_at ? ' · avisado '+fmtDay(String(a.fired_at).slice(0,10)) : ''}</div>
+        <div style="display:flex;gap:12px;align-items:center;">${a.fired_at ? `<button class="inv-re" data-re="${a.id}">Reactivar</button>` : ''}<i class="row-del" data-ald="${a.id}" title="Quitar">✕</i></div></div>`).join('')}
+      ${invAlertsErr ? `<div class="inv-sub">${invAlertsErr}</div>` : ''}
+      <button class="btn-ghost" id="alAdd" style="margin-top:8px;">+ Añadir aviso</button>`;
+  }
+  function invWireAlerts(ctx, reopen){
+    const add = document.getElementById('alAdd'); if(add) add.onclick = ()=> openAlertForm(ctx, reopen);
+    $sheet.querySelectorAll('[data-ald]').forEach(x=> x.onclick = async e=>{
+      e.stopPropagation();
+      try{ const { error } = await sb.from('cuentas_alertas').delete().eq('id', x.dataset.ald); if(error) throw error; invAlerts = (invAlerts||[]).filter(a=>a.id!==x.dataset.ald); reopen(); }
+      catch(err){ showToast('No se ha podido quitar'); }
+    });
+    $sheet.querySelectorAll('[data-re]').forEach(x=> x.onclick = async ()=>{
+      try{ const { error } = await sb.from('cuentas_alertas').update({ fired_at:null, fired_value:null }).eq('id', x.dataset.re); if(error) throw error; const a = (invAlerts||[]).find(y=>y.id===x.dataset.re); if(a) a.fired_at = null; showToast('Aviso reactivado'); reopen(); }
+      catch(err){ showToast('No se ha podido reactivar'); }
+    });
+  }
+  function openAlertForm(ctx, reopen){
+    let kind = 'precio';
+    const draw = ()=>{
+      const now = kind==='precio' ? ctx.now.precio : ctx.now.valor, unit = kind==='precio' ? (ctx.cur==='EUR' ? '€' : ctx.cur==='USD' ? '$' : ctx.cur||'') : '€';
+      $sheet.innerHTML = `<h2>Nuevo aviso <span class="close-x" id="closeX">✕</span></h2>
+        <div class="inv-sub" style="margin:-6px 0 14px;">${escH(ctx.name)}</div>
+        ${ctx.inv_id ? `<div class="seg" id="alKind"><button data-k="precio" class="${kind==='precio'?'active':''}">Precio de la acción</button><button data-k="valor" class="${kind==='valor'?'active':''}">Mi posición (€)</button></div>` : ''}
+        <div class="field"><label>Avisarme cuando llegue a (${unit})</label><input type="number" id="alT" inputmode="decimal" step="any" min="0"></div>
+        <div class="inv-sub" style="margin:-4px 0 14px;">Ahora ${now==null ? '—' : kind==='precio' ? fmtPx(now, ctx.cur) : euro(now)}</div>
+        <div class="auth-err" id="alErr"></div>
+        <button class="btn-primary" id="alSave">Guardar</button>`;
+      document.getElementById('closeX').onclick = reopen;
+      $sheet.querySelectorAll('#alKind button').forEach(b=> b.onclick = ()=>{ kind = b.dataset.k; draw(); });
+      document.getElementById('alSave').onclick = async ()=>{
+        const t = parseFloat(String(document.getElementById('alT').value).replace(',','.')), err = document.getElementById('alErr');
+        if(!(t>0)){ err.textContent = 'Pon una cantidad'; return; }
+        const op = now!=null && t < now ? '<=' : '>=';
+        const btn = document.getElementById('alSave'); btn.disabled = true;
+        try{
+          const row = { user_id:me.id, inv_id:ctx.inv_id||null, symbol:ctx.symbol, name:ctx.name, cur:ctx.cur||'', kind, op, target:t };
+          const { data, error } = await sb.from('cuentas_alertas').insert(row).select().single();
+          if(error) throw error;
+          invAlerts = (invAlerts||[]).concat(data);
+          showToast(op==='>=' ? 'Te aviso cuando suba a '+(kind==='precio' ? fmtPx(t, ctx.cur) : euro(t)) : 'Te aviso cuando baje a '+(kind==='precio' ? fmtPx(t, ctx.cur) : euro(t)));
+          reopen();
+        }catch(e){ err.textContent = 'No se ha podido guardar. Falta preparar los avisos en Supabase.'; btn.disabled = false; }
+      };
+    };
+    draw();
+  }
+
   function renderInv(){
-    const ps = invActive(), all = invList(), closed = all.filter(p=>p.closed), t = invTotals(ps), M = privacyMode, desk = window.innerWidth>=1000;
+    const ps = invActive(), all = invList(), closed = all.filter(p=>p.closed), t = invTotals(ps), M = false, desk = window.innerWidth>=1000;
     const realized = all.reduce((s,p)=>s+invRealized(p),0), hasSales = all.some(p=>invSales(p).length);
     // tabla: una fila por inversión (lo que tienes ahora; si está cerrada, lo que se vendió) y, al desplegar, una por operación
     const opsFlat = [];
@@ -5794,7 +5911,6 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
       ${headerHtml('Inversiones')}
       ${desk ? '' : '<button class="set-back" id="invBack">‹ Resumen</button>'}
       <div class="cell total-cell inv-hero">
-        <button class="privacy-btn" id="privacyToggle">${M ? EYE_OFF_ICON : EYE_ICON}</button>
         <div class="t-lbl">Cartera</div>
         <div class="t-val ${M?'masked-val':''}">${M ? MASK : euro(t.value)}</div>
         ${ps.length ? `<div class="inv-hero-s">
@@ -5819,6 +5935,11 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
           <div class="inv-row-l"><div class="inv-name">${escH(accName(r.id))}</div></div>
           <div class="inv-row-r"><div class="inv-val mono ${r.c<0?'neg':''}">${M ? MASK : euro(r.c)}</div></div></div>`).join('') : ''}
         <button class="btn-primary" id="invAdd" style="margin-top:4px;">+ Añadir inversión</button>
+        <div class="section-title" style="margin:20px 4px 8px;">Favoritos</div>
+        ${invWatch().map(w=>{ const q = invQ[w.symbol], ch = q && q.prev ? q.price/q.prev-1 : 0; return `<div class="cell inv-row inv-fav" data-sym="${escH(w.symbol)}">
+          <div class="inv-row-l"><div class="inv-name">${escH(w.name)}</div><div class="inv-sub">${escH(w.symbol)} · ${INV_TYPES[w.type]||w.type||''}</div></div>
+          <div class="inv-row-r"><div class="inv-val mono">${q ? fmtPx(q.price, q.cur) : '—'}</div><div class="inv-sub"><span class="${posCls(ch)}">${pctS(ch)}</span></div></div></div>`; }).join('')}
+        <button class="btn-ghost" id="favAdd">+ Añadir favorito</button>
       </div>
       ${ps.length>1 || accItems.length>1 ? `<div>
         ${ps.length>1 ? `<div class="cell"><div class="section-title" style="margin:0 0 12px;">Reparto</div>${invDonutHtml(rows.map(r=>({ n:r.p.name, v:r.v })))}</div>` : ''}
@@ -5833,8 +5954,10 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     });
     $app.querySelectorAll('.inv-cash').forEach(r=> r.onclick = ()=> openInvCash(r.dataset.acc));
     const bk = document.getElementById('invBack'); if(bk) bk.onclick = ()=>{ activeTab = 'resumen'; render(); };
-    document.getElementById('privacyToggle').onclick = ()=>{ privacyMode = !privacyMode; renderInv(); };
     document.getElementById('invAdd').onclick = ()=> openInvSearch();
+    document.getElementById('favAdd').onclick = ()=> openInvSearch('fav');
+    $app.querySelectorAll('.inv-fav').forEach(r=> r.onclick = ()=> openWatch(r.dataset.sym));
+    invLoadAlerts();
     $app.querySelectorAll('.inv-row[data-id]').forEach(r=> r.onclick = ()=> openInvDetail(r.dataset.id));
     if(all.some(p=>p.lots.length)) invFillChart('all', all, M);
     invKick();
@@ -5852,9 +5975,10 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
   }
 
   // ---------- hojas: buscar, aportar, detalle ----------
-  function openInvSearch(){
-    $sheet.innerHTML = `<h2>Añadir inversión <span class="close-x" id="closeX">✕</span></h2>
-      <div class="field" style="margin-bottom:10px;"><input type="search" id="invQ" placeholder="Empresa, fondo, ETF, cripto o ISIN" autocapitalize="off" autocomplete="off"></div>
+  function openInvSearch(mode){
+    const fav = mode==='fav';
+    $sheet.innerHTML = `<h2>${fav ? 'Añadir favorito' : 'Añadir inversión'} <span class="close-x" id="closeX">✕</span></h2>
+      <div class="field" style="margin-bottom:10px;"><input type="search" id="invQ" placeholder="${fav ? 'Índice, empresa, fondo, ETF o cripto' : 'Empresa, fondo, ETF, cripto o ISIN'}" autocapitalize="off" autocomplete="off"></div>
       <div id="invRes" class="inv-res"></div>`;
     $overlay.classList.add('show');
     document.getElementById('closeX').onclick = ()=> $overlay.classList.remove('show');
@@ -5869,11 +5993,19 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
       tm = setTimeout(async ()=>{
         const my = ++seq;
         try{
-          const d = await invCall({ op:'search', q:v });
+          const d = await invCall({ op:'search', q:v, idx:fav });
           if(my!==seq) return;
           const items = d.items||[];
           res.innerHTML = items.length ? items.map((x,i)=>`<button class="inv-hit" data-i="${i}"><span><b>${escH(x.name)}</b><small>${escH(x.symbol)} · ${escH(x.exch)}</small></span><span class="am-tag">${INV_TYPES[x.type]||x.type}</span></button>`).join('') : '<div class="empty-note">Sin resultados.</div>';
-          res.querySelectorAll('.inv-hit').forEach(b=> b.onclick = ()=> openInvLot(null, items[+b.dataset.i]));
+          res.querySelectorAll('.inv-hit').forEach(b=> b.onclick = async ()=>{
+            const hit = items[+b.dataset.i];
+            if(!fav){ openInvLot(null, hit); return; }
+            if(invWatch().some(w=>w.symbol===hit.symbol)){ openWatch(hit.symbol); return; }
+            let cur = '';
+            try{ const qd = await invCall({ op:'quotes', symbols:[hit.symbol] }); const q = qd.quotes && qd.quotes[hit.symbol]; if(q){ invQ[hit.symbol] = q; cur = q.cur || ''; } }catch(e){}
+            invWatch().push({ symbol:hit.symbol, name:hit.name, type:hit.type, exch:hit.exch, cur });
+            await saveState(); renderInv(); openWatch(hit.symbol);
+          });
         }catch(e){ if(my===seq) res.innerHTML = '<div class="empty-note">No se ha podido buscar. Prueba otra vez.</div>'; }
       }, 350);
     };
@@ -5937,7 +6069,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
   }
   function openInvDetail(id){
     const p = invList().find(x=>x.id===id); if(!p) return;
-    const q = invQ[p.symbol], v = invValue(p), c = invCost(p), u = invUnits(p), d = invDayChange(p), M = privacyMode, cl = !!p.closed;
+    const q = invQ[p.symbol], v = invValue(p), c = invCost(p), u = invUnits(p), d = invDayChange(p), M = false, cl = !!p.closed;
     const real = invRealized(p), paid = invPaid(p), sales = invSales(p);
     const mv = x => M ? '•••' : x;
     const txAcc = (id, k) => accName((state.transactions.find(t=>t.id===id)||{})[k]||'');
@@ -5969,12 +6101,17 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
             <div style="display:flex;align-items:center;gap:10px;"><span class="mono" style="font-weight:700;">${mv(euro(x.eur))}</span><span class="inv-sub mono">${mv(fmtU(x.units))}</span><i class="row-del" data-lot="${x.id}" title="Quitar">✕</i></div></div>`
         : `<div class="exp-row inv-lot inv-sale"><div class="exp-name">${fmtDay(x.date)} · venta${x.tx ? ' · '+escH(txAcc(x.tx,'toAccount')) : ''}</div>
             <div style="display:flex;align-items:center;gap:10px;"><span class="mono" style="font-weight:700;">−${mv(euro(x.eur))}</span><span class="inv-sub mono ${posCls(invSaleResult(p,x))}">${mv(euroS(invSaleResult(p,x)))}</span><i class="row-del" data-sale="${x.id}" title="Quitar">✕</i></div></div>`).join('')}
+      ${cl ? '' : invAlertsHtml({ inv_id:p.id, symbol:p.symbol })}
       <button class="btn-primary" id="idAdd" style="margin-top:14px;">+ ${cl ? 'Volver a comprar' : 'Añadir aportación'}</button>
       ${cl ? '' : '<button class="btn-ghost" id="idSell" style="margin-top:8px;">Vender</button>'}
       <button class="btn-secondary" id="idDel" style="margin-top:8px;">Eliminar inversión</button>`;
     $overlay.classList.add('show');
     document.getElementById('closeX').onclick = ()=> $overlay.classList.remove('show');
     invFillChart('one', [p], M);
+    if(!cl){
+      invWireAlerts({ inv_id:p.id, symbol:p.symbol, name:p.name, cur:p.cur, now:{ precio: q ? q.price : null, valor: v } }, ()=>openInvDetail(p.id));
+      if(invAlerts==null) invLoadAlerts().then(()=>{ if($overlay.classList.contains('show') && document.getElementById('invBox-one')) openInvDetail(p.id); });
+    }
     document.getElementById('idAdd').onclick = ()=> openInvLot(p);
     const pb = document.getElementById('idPlan'); if(pb) pb.onclick = ()=> openInvPlan(p);
     const sb_ = document.getElementById('idSell'); if(sb_) sb_.onclick = ()=> openInvSell(p);
@@ -6022,7 +6159,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
   }
   function openInvOp(r){
     if(!r) return;
-    const p = r.p, g = r.out-r.cost, M = privacyMode, mv = x => M ? '•••' : x, cur = p.cur;
+    const p = r.p, g = r.out-r.cost, M = false, mv = x => M ? '•••' : x, cur = p.cur;
     $sheet.innerHTML = `<h2>${escH(p.name)} <span class="close-x" id="closeX">✕</span></h2>
       <div class="inv-sub" style="margin:-6px 0 12px;">${escH(p.symbol)} · ${fmtDay(r.lot.date)} → ${r.open ? 'hoy' : fmtDay(r.sellDate)}</div>
       ${invChartBox('op', ['Compra','1M','3M','6M','1A'], 'Compra', 'Compra')}
