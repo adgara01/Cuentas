@@ -759,7 +759,9 @@
   }
   .inv-ops .op-st{display:inline-block;vertical-align:1px;margin-right:6px;font-style:normal;font-size:10px;font-weight:800;letter-spacing:.3px;padding:2px 7px;border-radius:999px;background:var(--bg);color:var(--muted);}
   .inv-ops .op-st.on{background:var(--amber-bg, rgba(240,180,40,.2));color:var(--amber, #B07C08);}
+  .inv-chart-title{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:700;margin:0 0 10px;}
   .inv-sel{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px;}
+  .inv-sel .inv-sel-all{border-style:dashed;}
   .inv-sel button{border:1px solid var(--line);background:none;font:inherit;font-size:12.5px;font-weight:700;color:var(--muted);padding:6px 12px;border-radius:999px;cursor:pointer;}
   .inv-sel button.on{background:var(--ink);color:var(--on-ink, #fff);border-color:var(--ink);}
   .inv-closed-link{border:none;background:none;font:inherit;color:var(--muted);text-decoration:underline;cursor:pointer;padding:0;}
@@ -1528,7 +1530,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
-  const APP_VERSION = '2026.11.17-15';
+  const APP_VERSION = '2026.11.17-16';
   const DEFAULT_STATE = {
     onboarded: false,
     accounts: [
@@ -5370,7 +5372,8 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
   const INV_RANGES = [['1M',30],['3M',91],['6M',182],['1A',365],['Todo',0]];
   let invQ = {}; try{ invQ = JSON.parse(localStorage.getItem('cuentas-inv-q')||'{}') || {}; }catch(e){ invQ = {}; }
   let invQAt = 0, invBusy = null, invRange = 'Todo', invErr = '';
-  const invOpenGrp = new Set(), invChartSel = new Set();
+  const invOpenGrp = new Set();
+  let invChartPick = null; // null = las activas; si no, las inversiones que se ven en el gráfico
   const invH = {};
   const invList = ()=> Array.isArray(state.investments) ? state.investments : (state.investments = []);
   const invOf = accId => invList().filter(p=>p.account===accId);
@@ -5941,8 +5944,12 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     // tabla: una fila por inversión (lo que tienes ahora; si está cerrada, lo que se vendió) y, al desplegar, una por operación
     const opsFlat = [];
     const chartPs = all.filter(p=>p.lots.length);
-    [...invChartSel].forEach(id=>{ if(!chartPs.some(p=>p.id===id)) invChartSel.delete(id); });
-    const selPs = chartPs.filter(p=>invChartSel.has(p.id));
+    if(invChartPick) invChartPick = new Set([...invChartPick].filter(id=>chartPs.some(p=>p.id===id)));
+    if(invChartPick && !invChartPick.size) invChartPick = null;
+    const defIds = chartPs.filter(p=>!p.closed).map(p=>p.id), visIds = invChartPick || new Set(defIds.length ? defIds : chartPs.map(p=>p.id));
+    const selPs = chartPs.filter(p=>visIds.has(p.id));
+    const short = p => p.name.length>26 ? p.symbol : p.name;
+    const chartTitle = !invChartPick ? 'Toda tu cartera activa' : selPs.length===chartPs.length ? 'Todas tus inversiones' : selPs.length<=2 ? selPs.map(short).join(' + ') : selPs.length+' de '+chartPs.length+' inversiones';
     const groups = all.filter(p=>p.lots.length).map(p=>{
       const rs = invFifo(p), op = rs.filter(r=>r.open), cl = rs.filter(r=>!r.open), base = op.length ? op : cl;
       const units = sumF(base,'units'), cost = sumF(base,'cost'), out = sumF(base,'out');
@@ -6012,7 +6019,8 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
         ${invErr ? `<div class="inv-err">${invErr}</div>` : ''}
       </div>
       ${all.some(p=>p.lots.length) ? `<div class="cell inv-chart-cell">
-        ${chartPs.length>1 ? `<div class="inv-sel"><button class="${selPs.length ? '' : 'on'}" data-sel="">Toda la cartera</button>${chartPs.map(p=>`<button class="${invChartSel.has(p.id)?'on':''}" data-sel="${p.id}">${escH(p.name.length>26 ? p.symbol : p.name)}</button>`).join('')}</div>` : ''}
+        <div class="inv-chart-title">${escH(chartTitle)}</div>
+        ${chartPs.length>1 ? `<div class="inv-sel">${chartPs.map(p=>`<button class="${visIds.has(p.id)?'on':''}" data-sel="${p.id}">${escH(short(p))}</button>`).join('')}${invChartPick ? '<button class="inv-sel-all" data-sel="">Todas</button>' : ''}</div>` : ''}
         ${invChartBox('all')}</div>` : ''}
       ${groups.length ? `<div class="cell inv-ops-cell"><div class="section-title" style="margin:0 0 10px;">Operaciones</div>
         <div class="inv-ops-wrap"><table class="inv-ops"><thead><tr><th>Activo</th><th>Compra</th><th>Importe</th><th>Precio</th><th>Venta</th><th>Importe</th><th>Precio</th><th>Resultado</th><th>%</th></tr></thead>
@@ -6054,10 +6062,13 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     $app.querySelectorAll('.inv-row[data-id]').forEach(r=> r.onclick = ()=> openInvDetail(r.dataset.id));
     $app.querySelectorAll('.inv-sel button').forEach(b=> b.onclick = ()=>{
       const id = b.dataset.sel;
-      if(!id) invChartSel.clear(); else if(invChartSel.has(id)) invChartSel.delete(id); else invChartSel.add(id);
-      renderInv();
+      if(!id){ invChartPick = null; renderInv(); return; }
+      const next = new Set(visIds);
+      if(next.has(id)){ if(next.size===1) return; next.delete(id); } else next.add(id); // al menos una
+      const def = new Set(defIds.length ? defIds : chartPs.map(p=>p.id));
+      invChartPick = (next.size===def.size && [...next].every(x=>def.has(x))) ? null : next; renderInv();
     });
-    if(all.some(p=>p.lots.length)) invFillChart('all', selPs.length ? selPs : all, M);
+    if(all.some(p=>p.lots.length)) invFillChart('all', selPs.length ? selPs : chartPs, M);
     invKick();
   }
 
