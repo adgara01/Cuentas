@@ -728,7 +728,7 @@
   .inv-alert.fired .exp-name{color:var(--muted);}
   .inv-re{border:none;background:none;font:inherit;font-size:12px;font-weight:700;color:var(--acc, var(--green));cursor:pointer;padding:0;}
   .inv-page{display:flex;flex-direction:column;}
-  .inv-page > .inv-hero{order:1;} .inv-page > .inv-chart-cell{order:2;} .inv-page > .inv-ops-cell{order:3;} .inv-page > .inv-side{order:4;} .inv-page > .inv-favs-cell{order:5;}
+  .inv-page > .inv-hero{order:1;} .inv-page > .inv-chart-cell{order:2;} .inv-page > .inv-ops-cell{order:3;} .inv-page > .inv-acts{order:4;margin-bottom:12px;} .inv-page > .inv-favs-cell{order:5;} .inv-page > .inv-dist{order:6;}
   .inv-favs-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
   .inv-fav-search{display:flex;align-items:center;gap:8px;background:var(--bg);border-radius:14px;padding:0 12px;margin-bottom:10px;color:var(--muted);}
   .inv-fav-search input{flex:1;border:none;background:none;outline:none;font:inherit;font-size:14px;padding:11px 0;color:var(--ink);min-width:0;}
@@ -740,19 +740,25 @@
   .inv-fav-r{display:flex;flex-direction:column;align-items:flex-end;gap:4px;}
   .inv-fav-r b{font-size:14px;}
   .inv-spark{width:84px;height:28px;display:block;}
-  .inv-side-a{margin-bottom:12px;}
   @media (min-width:1000px){
-    .inv-page{display:grid;grid-template-columns:minmax(300px,360px) 1fr;grid-template-areas:"hero chart" "favs chart" "ops ops" "side side";gap:0 22px;align-items:start;}
+    .inv-page{display:grid;grid-template-columns:minmax(300px,360px) 1fr;grid-template-areas:"hero chart" "acts chart" "ops ops" "favs favs" "dist dist";grid-template-rows:auto 1fr;gap:0 22px;align-items:start;}
     .inv-page > .inv-hero{grid-area:hero;padding:22px 20px;}
     .inv-page > .inv-chart-cell{grid-area:chart;}
-    .inv-page > .inv-favs-cell{grid-area:favs;}
+    .inv-page > .inv-acts{grid-area:acts;}
     .inv-page > .inv-ops-cell{grid-area:ops;}
-    .inv-page > .inv-side{grid-area:side;display:grid;grid-template-columns:repeat(3,1fr);gap:0 22px;align-items:start;}
+    .inv-page > .inv-favs-cell{grid-area:favs;}
+    .inv-page > .inv-dist{grid-area:dist;display:grid;grid-template-columns:1fr 1fr;gap:0 22px;align-items:start;}
+    .inv-favs-cell .inv-fav-search{max-width:440px;}
+    .inv-favs-cell .inv-favs{display:block;}
+    .inv-fav-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));column-gap:24px;}
     .inv-hero .t-val{font-size:34px;}
     .inv-hero .inv-hero-s{justify-content:flex-start;}
     .inv-hero .t-lbl{text-align:left;} .inv-hero .t-val{text-align:left;}
     .inv-chart-cell .inv-svg{height:300px;}
   }
+  .inv-sel{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px;}
+  .inv-sel button{border:1px solid var(--line);background:none;font:inherit;font-size:12.5px;font-weight:700;color:var(--muted);padding:6px 12px;border-radius:999px;cursor:pointer;}
+  .inv-sel button.on{background:var(--ink);color:var(--on-ink, #fff);border-color:var(--ink);}
   .inv-closed-link{border:none;background:none;font:inherit;color:var(--muted);text-decoration:underline;cursor:pointer;padding:0;}
   .inv-lot{cursor:pointer;}
   .inv-plan{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;text-align:left;border:none;background:var(--bg);border-radius:14px;padding:12px 14px;font-family:inherit;color:var(--ink);cursor:pointer;}
@@ -1518,7 +1524,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
-  const APP_VERSION = '2026.11.17-10';
+  const APP_VERSION = '2026.11.17-11';
   const DEFAULT_STATE = {
     onboarded: false,
     accounts: [
@@ -5356,11 +5362,11 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
 
   // ================= INVERSIONES (precios: Edge Function cuentas-cotizaciones → Yahoo Finance) =================
   const INV_TYPES = { EQUITY:'Acción', ETF:'ETF', MUTUALFUND:'Fondo', CRYPTOCURRENCY:'Cripto', INDEX:'Índice' };
-  const INV_COLORS = ['var(--acc, var(--green))','var(--cat-violet)','var(--cat-blue)','var(--amber)','var(--green)','var(--red-mid)','var(--ink-soft)'];
+  const INV_COLORS = ['var(--green)','var(--cat-blue)','var(--amber)','var(--cat-violet)','var(--red-mid)','var(--ink-soft)','var(--muted)'];
   const INV_RANGES = [['1M',30],['3M',91],['6M',182],['1A',365],['Todo',0]];
   let invQ = {}; try{ invQ = JSON.parse(localStorage.getItem('cuentas-inv-q')||'{}') || {}; }catch(e){ invQ = {}; }
   let invQAt = 0, invBusy = null, invRange = 'Todo', invErr = '';
-  const invOpenGrp = new Set();
+  const invOpenGrp = new Set(), invChartSel = new Set();
   const invH = {};
   const invList = ()=> Array.isArray(state.investments) ? state.investments : (state.investments = []);
   const invOf = accId => invList().filter(p=>p.account===accId);
@@ -5821,22 +5827,29 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     const q = invQ[w.symbol]; if(q) out.push({ d:today, v:q.price, i:null, c:q.cur });
     return out;
   }
-  function openWatch(sym){
-    const w = invWatch().find(x=>x.symbol===sym); if(!w) return;
+  function openWatch(sym, hit){
+    const saved = invWatch().find(x=>x.symbol===sym), w = saved || hit; if(!w) return;
     const q = invQ[w.symbol], ch = q && q.prev ? q.price/q.prev-1 : 0;
     $sheet.innerHTML = `<h2>${escH(w.name)} <span class="close-x" id="closeX">✕</span></h2>
       <div class="inv-sub" style="margin:-6px 0 12px;">${escH(w.symbol)} · ${INV_TYPES[w.type]||w.type||''}${w.exch?' · '+escH(w.exch):''}</div>
       ${invChartBox('fav', ['1M','3M','6M','1A','Todo'], '1A')}
       <div class="inv-stats"><div><span>Precio</span><b class="mono">${q ? fmtPx(q.price, q.cur) : '—'}</b></div><div><span>Hoy</span><b class="mono ${posCls(ch)}">${pctS(ch)}</b></div></div>
-      ${invAlertsHtml({ symbol:w.symbol })}
+      ${saved ? `<div class="field" style="margin-top:14px;"><label>Nombre</label><input type="text" id="wName" value="${escH(w.name)}" maxlength="60"></div>` : ''}
+      ${saved ? invAlertsHtml({ symbol:w.symbol }) : ''}
+      ${saved ? '' : '<button class="btn-primary" id="wAdd" style="margin-top:14px;">Añadir a favoritos</button>'}
       ${w.type!=='INDEX' ? '<button class="btn-ghost" id="wBuy" style="margin-top:8px;">Comprar</button>' : ''}
-      <button class="btn-secondary" id="wDel" style="margin-top:8px;">Quitar de favoritos</button>`;
+      ${saved ? '<button class="btn-secondary" id="wDel" style="margin-top:8px;">Quitar de favoritos</button>' : ''}`;
     $overlay.classList.add('show');
     document.getElementById('closeX').onclick = ()=> $overlay.classList.remove('show');
     invFillChart('fav', null, false, ()=>invWatchSeries(w));
-    invWireAlerts({ symbol:w.symbol, name:w.name, cur:(q && q.cur) || w.cur, now:{ precio: q ? q.price : null } }, ()=>openWatch(sym));
     const bb = document.getElementById('wBuy'); if(bb) bb.onclick = ()=> openInvLot(null, { symbol:w.symbol, name:w.name, type:w.type, exch:w.exch });
-    document.getElementById('wDel').onclick = async ()=>{ state.watch = invWatch().filter(x=>x.symbol!==sym); await saveState(); $overlay.classList.remove('show'); renderInv(); };
+    const add = document.getElementById('wAdd');
+    if(add) add.onclick = async ()=>{ invWatch().push({ symbol:w.symbol, name:w.name, type:w.type, exch:w.exch, cur:(q && q.cur) || w.cur || '' }); await saveState(); showToast('Añadido a favoritos'); renderInv(); openWatch(sym); };
+    if(!saved) return;
+    const nm = document.getElementById('wName');
+    nm.onchange = async ()=>{ const v = nm.value.trim(); if(!v || v===saved.name) return; saved.name = v; await saveState(); showToast('Nombre cambiado'); renderInv(); $sheet.querySelector('h2').firstChild.textContent = v+' '; };
+    invWireAlerts({ symbol:w.symbol, name:w.name, cur:(q && q.cur) || w.cur, now:{ precio: q ? q.price : null } }, ()=>openWatch(sym));
+    document.getElementById('wDel').onclick = async ()=>{ state.watch = invWatch().filter(x=>x.symbol!==sym); await saveState(); $overlay.classList.remove('show'); showToast('Quitado de favoritos'); renderInv(); };
     if(invAlerts==null) invLoadAlerts().then(()=>{ if($overlay.classList.contains('show') && document.getElementById('invBox-fav')) openWatch(sym); });
   }
 
@@ -5923,6 +5936,9 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     const realized = all.reduce((s,p)=>s+invRealized(p),0), hasSales = all.some(p=>invSales(p).length);
     // tabla: una fila por inversión (lo que tienes ahora; si está cerrada, lo que se vendió) y, al desplegar, una por operación
     const opsFlat = [];
+    const chartPs = all.filter(p=>p.lots.length);
+    [...invChartSel].forEach(id=>{ if(!chartPs.some(p=>p.id===id)) invChartSel.delete(id); });
+    const selPs = chartPs.filter(p=>invChartSel.has(p.id));
     const groups = all.filter(p=>p.lots.length).map(p=>{
       const rs = invFifo(p), op = rs.filter(r=>r.open), cl = rs.filter(r=>!r.open), base = op.length ? op : cl;
       const units = sumF(base,'units'), cost = sumF(base,'cost'), out = sumF(base,'out');
@@ -5972,10 +5988,10 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     const favHtml = `<div class="inv-favs">
         <div class="inv-favs-head"><div class="section-title" style="margin:0;">Favoritos</div></div>
         <label class="inv-fav-search">${ico('search',16)}<input id="favQ" type="search" placeholder="Buscar índice, empresa, ETF o cripto" autocomplete="off" autocapitalize="off"></label>
-        ${invWatch().map(w=>{ const q = invQ[w.symbol], ch = q && q.prev ? q.price/q.prev-1 : 0; return `<button class="inv-fav" data-sym="${escH(w.symbol)}">
+        <div class="inv-fav-list">${invWatch().map(w=>{ const q = invQ[w.symbol], ch = q && q.prev ? q.price/q.prev-1 : 0; return `<button class="inv-fav" data-sym="${escH(w.symbol)}">
           <span class="inv-fav-l"><b>${escH(w.name)}</b><small>${escH(w.symbol)} · ${INV_TYPES[w.type]||w.type||''}</small></span>
           <span class="inv-spark" data-spark="${escH(w.symbol)}"></span>
-          <span class="inv-fav-r"><b class="mono">${q ? fmtPx(q.price, q.cur) : '—'}</b><span class="inv-chip ${posCls(ch)}">${pctS(ch)}</span></span></button>`; }).join('') || '<div class="inv-sub" style="padding:6px 2px;">Busca un índice o una empresa para seguirlo.</div>'}
+          <span class="inv-fav-r"><b class="mono">${q ? fmtPx(q.price, q.cur) : '—'}</b><span class="inv-chip ${posCls(ch)}">${pctS(ch)}</span></span></button>`; }).join('') || '<div class="inv-sub" style="padding:6px 2px;">Busca un índice o una empresa para seguirlo.</div>'}</div>
       </div>`;
     $app.innerHTML = `
       ${headerHtml('Inversiones')}
@@ -5991,7 +6007,9 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
         </div>` : (hasSales ? `<div class="inv-hero-s"><span class="inv-chip ${posCls(realized)}">Realizado ${euroS(realized)}</span></div>` : '')}
         ${invErr ? `<div class="inv-err">${invErr}</div>` : ''}
       </div>
-      ${all.some(p=>p.lots.length) ? `<div class="cell inv-chart-cell">${invChartBox('all')}</div>` : ''}
+      ${all.some(p=>p.lots.length) ? `<div class="cell inv-chart-cell">
+        ${chartPs.length>1 ? `<div class="inv-sel"><button class="${selPs.length ? '' : 'on'}" data-sel="">Toda la cartera</button>${chartPs.map(p=>`<button class="${invChartSel.has(p.id)?'on':''}" data-sel="${p.id}">${escH(p.name.length>26 ? p.symbol : p.name)}</button>`).join('')}</div>` : ''}
+        ${invChartBox('all')}</div>` : ''}
       ${groups.length ? `<div class="cell inv-ops-cell"><div class="section-title" style="margin:0 0 10px;">Operaciones</div>
         <div class="inv-ops-wrap"><table class="inv-ops"><thead><tr><th>Activo</th><th>Compra</th><th>Importe</th><th>Precio</th><th>Venta</th><th>Importe</th><th>Precio</th><th>Resultado</th><th>%</th></tr></thead>
         <tbody>${groups.map(gr=>{
@@ -6001,17 +6019,17 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
           const kids = many && isOpen ? gr.kids.map(k=> opRowHtml(k.o,
             `class="op-kid ${k.o.open?'op-open':'op-done'}" data-op="${opsFlat.push(k.ref)-1}"`, false)).join('') : '';
           return head + kids; }).join('')}</tbody></table></div></div>` : ''}
-      <div class="inv-side">
-        <div class="inv-side-a">
+      <div class="inv-acts">
           ${cashRows.length ? `<div class="section-title" style="margin:6px 4px 8px;">Efectivo</div>` + cashRows.map(r=>`<div class="cell inv-row inv-cash" data-acc="${r.id}">
             <div class="inv-row-l"><div class="inv-name">${escH(accName(r.id))}</div></div>
             <div class="inv-row-r"><div class="inv-val mono ${r.c<0?'neg':''}">${M ? MASK : euro(r.c)}</div></div></div>`).join('') : ''}
           <button class="btn-primary" id="invAdd" style="margin-top:4px;">+ Añadir inversión</button>
-        </div>
-        ${ps.length>1 ? `<div class="cell"><div class="section-title" style="margin:0 0 12px;">Reparto</div>${invDonutHtml(rows.map(r=>({ n:r.p.name, v:r.v })))}</div>` : ''}
-        ${accItems.length>1 ? `<div class="cell"><div class="section-title" style="margin:0 0 12px;">Por cuenta</div>${invDonutHtml(accItems)}</div>` : ''}
       </div>
       <div class="cell inv-favs-cell">${favHtml}</div>
+      ${ps.length>1 || accItems.length>1 ? `<div class="inv-dist">
+        ${ps.length>1 ? `<div class="cell"><div class="section-title" style="margin:0 0 12px;">Reparto</div>${invDonutHtml(rows.map(r=>({ n:r.p.name, v:r.v })))}</div>` : ''}
+        ${accItems.length>1 ? `<div class="cell"><div class="section-title" style="margin:0 0 12px;">Por cuenta</div>${invDonutHtml(accItems)}</div>` : ''}
+      </div>` : ''}
       </div>
     `;
     $app.querySelectorAll('tr.op-kid').forEach(tr=> tr.onclick = ()=> openInvOp(opsFlat[+tr.dataset.op]));
@@ -6028,7 +6046,12 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     $app.querySelectorAll('[data-spark]').forEach(el=> invSpark(el, el.dataset.spark));
     invLoadAlerts();
     $app.querySelectorAll('.inv-row[data-id]').forEach(r=> r.onclick = ()=> openInvDetail(r.dataset.id));
-    if(all.some(p=>p.lots.length)) invFillChart('all', all, M);
+    $app.querySelectorAll('.inv-sel button').forEach(b=> b.onclick = ()=>{
+      const id = b.dataset.sel;
+      if(!id) invChartSel.clear(); else if(invChartSel.has(id)) invChartSel.delete(id); else invChartSel.add(id);
+      renderInv();
+    });
+    if(all.some(p=>p.lots.length)) invFillChart('all', selPs.length ? selPs : all, M);
     invKick();
   }
 
@@ -6063,13 +6086,11 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     const q = document.getElementById('invQ'), res = document.getElementById('invRes');
     setTimeout(()=>{ q.focus(); try{ q.setSelectionRange(q.value.length, q.value.length); }catch(e){} }, 60);
     let tm = null, seq = 0;
-    const pick = async hit => {
+    let pick = async hit => {
       if(!fav){ openInvLot(null, hit); return; }
       if(invWatch().some(w=>w.symbol===hit.symbol)){ openWatch(hit.symbol); return; }
-      let cur = '';
-      try{ const qd = await invCall({ op:'quotes', symbols:[hit.symbol] }); const qq = qd.quotes && qd.quotes[hit.symbol]; if(qq){ invQ[hit.symbol] = qq; cur = qq.cur || ''; } }catch(e){}
-      invWatch().push({ symbol:hit.symbol, name:hit.name, type:hit.type, exch:hit.exch, cur });
-      await saveState(); renderInv(); openWatch(hit.symbol);
+      try{ const qd = await invCall({ op:'quotes', symbols:[hit.symbol] }); const qq = qd.quotes && qd.quotes[hit.symbol]; if(qq){ invQ[hit.symbol] = qq; hit = Object.assign({}, hit, { cur: qq.cur || '' }); } }catch(e){}
+      openWatch(hit.symbol, hit);
     };
     const show = (items, title)=>{
       res.innerHTML = (title ? `<div class="section-title" style="margin:4px 2px 2px;">${title}</div>` : '') + (items.length ? items.map((x,i)=>`<button class="inv-hit" data-i="${i}"><span><b>${escH(x.name)}</b><small>${escH(x.symbol)} · ${escH(x.exch)}</small></span><span class="am-tag">${INV_TYPES[x.type]||x.type}</span></button>`).join('') : '<div class="empty-note">Sin resultados.</div>');
