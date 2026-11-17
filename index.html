@@ -793,7 +793,7 @@
   .anual-svg{width:100%;height:auto;display:block;}
   @media (min-width:1000px){
     body.wide #app{max-width:1100px;}
-    body.wide.tab-inv #app{max-width:1240px;}
+    body.wide.tab-inv #app{max-width:1380px;}
     body.wide .tabbar-inner{max-width:620px;}
     .anual-kpis{grid-template-columns:repeat(4,1fr);}
     .anual-grid{grid-template-columns:1fr 1fr;}
@@ -1528,7 +1528,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
-  const APP_VERSION = '2026.11.17-14';
+  const APP_VERSION = '2026.11.17-15';
   const DEFAULT_STATE = {
     onboarded: false,
     accounts: [
@@ -6355,6 +6355,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     const entering = lastRenderedTab !== activeTab; lastRenderedTab = activeTab;
     $app.classList.toggle('enter', entering);
     if(entering){ clearTimeout(enterT); enterT = setTimeout(()=>$app.classList.remove('enter'), 1300); }
+    if(entering && !$overlay.classList.contains('show')) window.scrollTo(0,0); // al cambiar de pestaña, siempre arriba
     if(activeTab==='resumen') renderResumen();
     else if(activeTab==='insertar') renderInsertar();
     else if(activeTab==='dashboard') renderDashboard();
