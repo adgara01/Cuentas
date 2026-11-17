@@ -699,6 +699,10 @@
   .inv-legend i{width:10px;height:10px;border-radius:3px;flex-shrink:0;}
   .inv-legend span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .inv-lot .row-del{font-style:normal;}
+  .inv-lot{cursor:pointer;}
+  .inv-plan{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;text-align:left;border:none;background:var(--bg);border-radius:14px;padding:12px 14px;font-family:inherit;color:var(--ink);cursor:pointer;}
+  .inv-plan span:first-child{display:flex;flex-direction:column;gap:3px;}
+  .inv-plan b{font-size:14px;} .inv-plan small{font-size:12px;color:var(--muted);font-weight:600;}
   @media (min-width:1000px){
     .inv-cols.two{display:grid;grid-template-columns:1.4fr 1fr;gap:0 22px;align-items:start;}
     .inv-svg{height:240px;}
@@ -1457,7 +1461,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
-  const APP_VERSION = '2026.11.16-1';
+  const APP_VERSION = '2026.11.17-1';
   const DEFAULT_STATE = {
     onboarded: false,
     accounts: [
@@ -5353,13 +5357,122 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     })();
     return invBusy;
   }
+  function invRepaint(){
+    if($overlay.classList.contains('show')) return;
+    const ae = document.activeElement;
+    if(ae && $app.contains(ae) && /INPUT|SELECT|TEXTAREA/.test(ae.tagName)) return;
+    if(activeTab==='inv') renderInv(); else if(activeTab==='resumen') renderResumen();
+  }
   function invKick(){
-    invRefresh(false).then(ch=>{
-      if(!ch || $overlay.classList.contains('show')) return;
-      const ae = document.activeElement;
-      if(ae && $app.contains(ae) && /INPUT|SELECT|TEXTAREA/.test(ae.tagName)) return;
-      if(activeTab==='inv') renderInv(); else if(activeTab==='resumen') renderResumen();
-    });
+    invRunPlans().then(n=>{ if(n) invRepaint(); });
+    invRefresh(false).then(ch=>{ if(ch) invRepaint(); });
+  }
+
+  // ---------- compra mensual automática ----------
+  function invShiftWk(d){ const x = new Date(d+'T12:00:00'), w = x.getDay(); if(w===6) x.setDate(x.getDate()+2); else if(w===0) x.setDate(x.getDate()+1); return isoDate(x); }
+  function invPlanDue(pl){ // fechas de compra ya pasadas y aún sin apuntar (sábado/domingo → lunes)
+    const out = [], today = todayStr();
+    let y = +pl.start.slice(0,4), m = +pl.start.slice(5,7)-1;
+    for(let g=0; g<240; g++){
+      const d = invShiftWk(isoDate(new Date(y, m, Math.min(pl.day, new Date(y, m+1, 0).getDate()))));
+      if(d >= today) break;
+      if(d >= pl.start && (!pl.last || d > pl.last)) out.push(d);
+      if(++m>11){ m = 0; y++; }
+    }
+    return out;
+  }
+  function invNextPlanDate(pl){
+    const t = todayStr(); let y = +t.slice(0,4), m = +t.slice(5,7)-1;
+    for(let g=0; g<3; g++){ const d = invShiftWk(isoDate(new Date(y, m, Math.min(pl.day, new Date(y, m+1, 0).getDate())))); if(d>=t && d>=pl.start) return d; if(++m>11){ m = 0; y++; } }
+    return '';
+  }
+  function invAddTx(p, eur, date, from){
+    if(!from || !state.accounts.some(a=>a.id===from)) return null;
+    const toA = state.accounts.find(a=>a.id===p.account);
+    const tx = { id:uid(), ts:Date.now(), type:'Movimiento', account:from, toAccount:p.account, category: toA && toA.type==='ahorro' ? 'Ahorro' : 'Transferencia', amount:eur, comment:'Inversión · '+p.name.slice(0,40), date, inv:p.id };
+    state.transactions.push(tx);
+    return tx.id;
+  }
+  let invPlanBusy = false, invPlanAt = 0;
+  async function invRunPlans(){
+    if(invPlanBusy || Date.now()-invPlanAt < 600000) return 0;
+    const ps = invList().filter(p=>p.plan && p.plan.on && p.plan.eur>0);
+    if(!ps.length) return 0;
+    invPlanBusy = true; invPlanAt = Date.now(); let n = 0;
+    try{
+      for(const p of ps){
+        for(const d of invPlanDue(p.plan)){
+          if(p.lots.some(l=>l.auto && l.date.slice(0,7)===d.slice(0,7))){ p.plan.last = d; continue; } // ese mes ya tiene su compra mensual
+          let lot;
+          try{
+            const h = await invHist(p.symbol, addDaysStr(d,-10), '1d');
+            if(!h.ds.length || h.ds[h.ds.length-1] < d) break; // el precio de ese día aún no está publicado
+            lot = await invMakeLot(p, d, p.plan.eur, 0);
+          }catch(e){ break; }
+          lot.auto = 1;
+          const tx = invAddTx(p, p.plan.eur, d, p.plan.from); if(tx) lot.tx = tx;
+          p.lots.push(lot); p.plan.last = d; n++;
+        }
+        p.lots.sort((a,b)=>a.date.localeCompare(b.date));
+      }
+      if(n){ await saveState(); showToast(n===1 ? 'Compra mensual apuntada' : n+' compras mensuales apuntadas'); }
+    } finally { invPlanBusy = false; }
+    return n;
+  }
+  function openInvPlan(p){
+    const pl = p.plan && p.plan.on ? p.plan : null;
+    const fromOpts = `<option value="">Ninguna</option>` + state.accounts.filter(a=>!a.manual && a.id!==p.account).map(a=>`<option value="${a.id}" ${pl && pl.from===a.id ? 'selected' : ''}>${escH(a.name)}</option>`).join('');
+    $sheet.innerHTML = `<h2>Compra mensual <span class="close-x" id="closeX">✕</span></h2>
+      <div class="inv-sub" style="margin:-6px 0 14px;">${escH(p.name)}</div>
+      <div class="two-col">
+        <div class="field"><label>Importe (€)</label><input type="number" id="ipEur" inputmode="decimal" step="0.01" min="0" value="${pl ? pl.eur : ''}" placeholder="0,00"></div>
+        <div class="field"><label>Día del mes</label><input type="number" id="ipDay" inputmode="numeric" min="1" max="31" step="1" value="${pl ? pl.day : new Date().getDate()}"></div>
+      </div>
+      <div class="field"><label>Sale de</label><select id="ipFrom">${fromOpts}</select></div>
+      <div class="field"><label>Desde</label><input type="date" id="ipStart" value="${pl ? pl.start : todayStr()}"></div>
+      <div class="auth-err" id="ipErr"></div>
+      <button class="btn-primary" id="ipSave">Guardar</button>
+      ${pl ? '<button class="btn-secondary" id="ipOff" style="margin-top:8px;">Quitar compra mensual</button>' : ''}`;
+    $overlay.classList.add('show');
+    document.getElementById('closeX').onclick = ()=> openInvDetail(p.id);
+    document.getElementById('ipSave').onclick = async ()=>{
+      const eur = parseFloat(String(document.getElementById('ipEur').value).replace(',','.')), day = parseInt(document.getElementById('ipDay').value,10), start = document.getElementById('ipStart').value;
+      const err = document.getElementById('ipErr');
+      if(!(eur>0)){ err.textContent = 'Pon el importe'; return; }
+      if(!(day>=1 && day<=31)){ err.textContent = 'Día entre 1 y 31'; return; }
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(start)){ err.textContent = 'Pon la fecha de inicio'; return; }
+      // no repetir compras que ya están apuntadas a mano ese mismo día
+      const lastLot = p.lots.filter(l=>l.date>=start).map(l=>l.date).sort().pop();
+      p.plan = { on:true, eur, day, from: document.getElementById('ipFrom').value, start, last: [pl && pl.last, lastLot].filter(Boolean).sort().pop() || '' };
+      await saveState();
+      invPlanAt = 0;
+      const btn = document.getElementById('ipSave'); btn.disabled = true; btn.textContent = 'Guardando…';
+      await invRunPlans();
+      showToast('Compra mensual guardada');
+      renderInv(); openInvDetail(p.id);
+    };
+    const off = document.getElementById('ipOff');
+    if(off) off.onclick = async ()=>{ if(!confirm('¿Quitar la compra mensual? Las compras ya apuntadas se quedan.')) return; delete p.plan; await saveState(); renderInv(); openInvDetail(p.id); };
+  }
+  function openInvLotEdit(p, l){
+    $sheet.innerHTML = `<h2>${fmtDay(l.date)} <span class="close-x" id="closeX">✕</span></h2>
+      <div class="inv-sub" style="margin:-6px 0 14px;">${escH(p.name)}</div>
+      <div class="two-col">
+        <div class="field"><label>Importe (€)</label><input type="number" id="leEur" inputmode="decimal" step="0.01" min="0" value="${+(+l.eur).toFixed(2)}"></div>
+        <div class="field"><label>Participaciones</label><input type="number" id="leUnits" inputmode="decimal" step="any" min="0" value="${+(+l.units).toFixed(6)}"></div>
+      </div>
+      <div class="inv-sub" style="margin:0 0 14px;">Precio ${fmtPx(l.price, p.cur)}</div>
+      <div class="auth-err" id="leErr"></div>
+      <button class="btn-primary" id="leSave">Guardar</button>`;
+    $overlay.classList.add('show');
+    document.getElementById('closeX').onclick = ()=> openInvDetail(p.id);
+    document.getElementById('leSave').onclick = async ()=>{
+      const eur = parseFloat(String(document.getElementById('leEur').value).replace(',','.')), units = parseFloat(String(document.getElementById('leUnits').value).replace(',','.'));
+      if(!(eur>0) || !(units>0)){ document.getElementById('leErr').textContent = 'Revisa los números'; return; }
+      l.eur = eur; l.units = units; l.price = eur/(units*(+l.fx||1));
+      const tx = l.tx && state.transactions.find(t=>t.id===l.tx); if(tx) tx.amount = eur;
+      await saveState(); showToast('Aportación cambiada'); renderInv(); openInvDetail(p.id);
+    };
   }
   setInterval(()=>{ if(document.visibilityState==='visible' && me && state.onboarded && (activeTab==='inv'||activeTab==='resumen')) invKick(); }, 60000);
 
@@ -5596,6 +5709,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
       </div>
       <div class="field"><label>Sale de</label><select id="ilFrom">${fromOpts(target)}</select></div>
       <div class="field"><label>Participaciones (opcional)</label><input type="number" id="ilUnits" inputmode="decimal" step="any" min="0" placeholder="Automático"></div>
+      ${isNew ? '<label class="check-row"><input type="checkbox" id="ilRep"><span>Repetir cada mes</span></label>' : ''}
       <div class="auth-err" id="ilErr"></div>
       <button class="btn-primary" id="ilSave">Guardar</button>`;
     $overlay.classList.add('show');
@@ -5622,12 +5736,10 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
           if(p.cur!=='EUR' && !invQ[fxSym(p.cur)]){ const f = await invCall({ op:'quotes', symbols:[fxSym(p.cur)] }); if(f.quotes && f.quotes[fxSym(p.cur)]) invQ[fxSym(p.cur)] = f.quotes[fxSym(p.cur)]; }
         }
         const lot = await invMakeLot(p, date, eur, units);
-        if(from){
-          const toA = state.accounts.find(a=>a.id===p.account);
-          const tx = { id:uid(), ts:Date.now(), type:'Movimiento', account:from, toAccount:p.account, category: toA && toA.type==='ahorro' ? 'Ahorro' : 'Transferencia', amount:eur, comment:'Inversión · '+p.name.slice(0,40), date, inv:p.id };
-          state.transactions.push(tx); lot.tx = tx.id;
-        }
+        const txId = invAddTx(p, eur, date, from); if(txId) lot.tx = txId;
         p.lots.push(lot); p.lots.sort((a,b)=>a.date.localeCompare(b.date));
+        const rep = document.getElementById('ilRep');
+        if(isNew && rep && rep.checked) p.plan = { on:true, eur, day:+date.slice(8,10), from, start:date, last:date };
         if(isNew) invList().push(p);
         try{ localStorage.setItem('cuentas-inv-q', JSON.stringify(invQ)); }catch(e){}
         await saveState();
@@ -5653,8 +5765,12 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
         <div><span>Participaciones</span><b class="mono">${mv(fmtU(u))}</b></div>
       </div>
       <div class="field" style="margin-top:14px;"><label>Cuenta</label><select id="idAcc">${state.accounts.map(a=>`<option value="${a.id}" ${a.id===p.account?'selected':''}>${escH(a.name)}</option>`).join('')}</select></div>
+      <div class="section-title" style="margin:16px 0 6px;">Compra mensual</div>
+      ${p.plan && p.plan.on
+        ? `<button class="inv-plan" id="idPlan"><span><b>Día ${p.plan.day} · ${mv(euro(p.plan.eur))}</b><small>${p.plan.from ? 'Desde '+escH(accName(p.plan.from))+' · ' : ''}${invNextPlanDate(p.plan) ? 'Próxima '+fmtDay(invNextPlanDate(p.plan)) : ''}</small></span><span class="inv-arr">›</span></button>`
+        : `<button class="btn-ghost" id="idPlan">Programar compra mensual</button>`}
       <div class="section-title" style="margin:16px 0 6px;">Aportaciones</div>
-      ${p.lots.slice().reverse().map(l=>`<div class="exp-row inv-lot"><div class="exp-name">${fmtDay(l.date)}${l.tx ? ' · '+escH(accName((state.transactions.find(t=>t.id===l.tx)||{}).account||'')) : ''}</div>
+      ${p.lots.slice().reverse().map(l=>`<div class="exp-row inv-lot" data-edit="${l.id}"><div class="exp-name">${fmtDay(l.date)}${l.auto ? ' · mensual' : ''}${l.tx ? ' · '+escH(accName((state.transactions.find(t=>t.id===l.tx)||{}).account||'')) : ''}</div>
         <div style="display:flex;align-items:center;gap:10px;"><span class="mono" style="font-weight:700;">${mv(euro(l.eur))}</span><span class="inv-sub mono">${mv(fmtU(l.units))}</span><i class="row-del" data-lot="${l.id}" title="Quitar">✕</i></div></div>`).join('')}
       <button class="btn-primary" id="idAdd" style="margin-top:14px;">+ Añadir aportación</button>
       <button class="btn-secondary" id="idDel" style="margin-top:8px;">Eliminar inversión</button>`;
@@ -5662,9 +5778,12 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     document.getElementById('closeX').onclick = ()=> $overlay.classList.remove('show');
     invFillChart('one', [p], M);
     document.getElementById('idAdd').onclick = ()=> openInvLot(p);
+    document.getElementById('idPlan').onclick = ()=> openInvPlan(p);
+    $sheet.querySelectorAll('[data-edit]').forEach(r=> r.onclick = e=>{ if(e.target.closest('[data-lot]')) return; const l = p.lots.find(y=>y.id===r.dataset.edit); if(l) openInvLotEdit(p, l); });
     document.getElementById('idAcc').onchange = async e=>{ p.account = e.target.value; await saveState(); showToast('Cuenta cambiada'); renderInv(); };
     const dropTx = ids => { const s = new Set(ids.filter(Boolean)); if(s.size) state.transactions = state.transactions.filter(t=>!s.has(t.id)); };
-    $sheet.querySelectorAll('[data-lot]').forEach(x=> x.onclick = async ()=>{
+    $sheet.querySelectorAll('[data-lot]').forEach(x=> x.onclick = async e=>{
+      e.stopPropagation();
       const l = p.lots.find(y=>y.id===x.dataset.lot); if(!l) return;
       if(!confirm('¿Quitar la aportación del '+fmtDay(l.date)+'?' + (l.tx ? ' También se borra su movimiento.' : ''))) return;
       p.lots = p.lots.filter(y=>y!==l); dropTx([l.tx]);

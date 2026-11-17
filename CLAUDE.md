@@ -46,6 +46,7 @@ Iconos de línea grises, sin emojis; sin textos explicativos tipo IA; esquinas c
 - Una cuenta con inversiones vale la suma de sus inversiones a precio de mercado (`currentBalance` → `invAccValue`), sea manual o no.
 - Aportación con "Sale de" crea un Movimiento hacia la cuenta del bróker (`inv:<id>`, `lot.tx`). Al quitar la aportación o la inversión se borran sus movimientos.
 - Precios: Edge Function `cuentas-cotizaciones` (`supabase/functions/cuentas-cotizaciones/index.ts`), sin secrets, proxy de Yahoo Finance con User-Agent `Cuentas/1.0` (con UA de navegador falso o sin UA, Yahoo da 429). Operaciones `search`, `quotes` (range=1d: `chartPreviousClose` es el cierre de ayer), `chart`.
+- Compra mensual: `p.plan = {on, eur, day, from, start, last}`. `invRunPlans` (al abrir Resumen/Inversiones, como mucho cada 10 min) apunta las compras ya pasadas y sin apuntar: sábado/domingo pasan al lunes, solo cuando Yahoo ya tiene el precio de ese día (los fondos publican el valor liquidativo con retraso), una por mes (`lot.auto`), con su Movimiento si hay "Sale de". Tocar una aportación permite corregir importe y participaciones (y su movimiento).
 - Caché en el móvil: `cuentas-inv-q` (cotizaciones) y `cuentas-inv-h-<símbolo>|<intervalo>` (históricos, 6 h). Se refresca al abrir Resumen/Inversiones y cada minuto.
 
 ## Si cambia de iPhone, se le rompe o lo pierde
