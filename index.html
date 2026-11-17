@@ -727,6 +727,32 @@
   .inv-ops tr.op-kid:last-child td{border-bottom:1px solid var(--line);}
   .inv-alert.fired .exp-name{color:var(--muted);}
   .inv-re{border:none;background:none;font:inherit;font-size:12px;font-weight:700;color:var(--acc, var(--green));cursor:pointer;padding:0;}
+  .inv-page{display:flex;flex-direction:column;}
+  .inv-page > .inv-hero{order:1;} .inv-page > .inv-chart-cell{order:2;} .inv-page > .inv-ops-cell{order:3;} .inv-page > .inv-side{order:4;} .inv-page > .inv-favs-cell{order:5;}
+  .inv-favs-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
+  .inv-fav-search{display:flex;align-items:center;gap:8px;background:var(--bg);border-radius:14px;padding:0 12px;margin-bottom:10px;color:var(--muted);}
+  .inv-fav-search input{flex:1;border:none;background:none;outline:none;font:inherit;font-size:14px;padding:11px 0;color:var(--ink);min-width:0;}
+  .inv-fav{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:12px;width:100%;text-align:left;border:none;background:none;font-family:inherit;color:var(--ink);cursor:pointer;padding:10px 4px;border-top:1px solid var(--line);}
+  .inv-fav:hover{background:var(--bg);border-radius:12px;}
+  .inv-fav-l{display:flex;flex-direction:column;gap:2px;min-width:0;}
+  .inv-fav-l b{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .inv-fav-l small{font-size:11.5px;color:var(--muted);font-weight:600;}
+  .inv-fav-r{display:flex;flex-direction:column;align-items:flex-end;gap:4px;}
+  .inv-fav-r b{font-size:14px;}
+  .inv-spark{width:84px;height:28px;display:block;}
+  .inv-side-a{margin-bottom:12px;}
+  @media (min-width:1000px){
+    .inv-page{display:grid;grid-template-columns:minmax(300px,360px) 1fr;grid-template-areas:"hero chart" "favs chart" "ops ops" "side side";gap:0 22px;align-items:start;}
+    .inv-page > .inv-hero{grid-area:hero;padding:22px 20px;}
+    .inv-page > .inv-chart-cell{grid-area:chart;}
+    .inv-page > .inv-favs-cell{grid-area:favs;}
+    .inv-page > .inv-ops-cell{grid-area:ops;}
+    .inv-page > .inv-side{grid-area:side;display:grid;grid-template-columns:repeat(3,1fr);gap:0 22px;align-items:start;}
+    .inv-hero .t-val{font-size:34px;}
+    .inv-hero .inv-hero-s{justify-content:flex-start;}
+    .inv-hero .t-lbl{text-align:left;} .inv-hero .t-val{text-align:left;}
+    .inv-chart-cell .inv-svg{height:300px;}
+  }
   .inv-closed-link{border:none;background:none;font:inherit;color:var(--muted);text-decoration:underline;cursor:pointer;padding:0;}
   .inv-lot{cursor:pointer;}
   .inv-plan{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;text-align:left;border:none;background:var(--bg);border-radius:14px;padding:12px 14px;font-family:inherit;color:var(--ink);cursor:pointer;}
@@ -1492,7 +1518,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
-  const APP_VERSION = '2026.11.17-8';
+  const APP_VERSION = '2026.11.17-9';
   const DEFAULT_STATE = {
     onboarded: false,
     accounts: [
@@ -3251,6 +3277,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     hourglass:'<path d="M6 3h12M6 21h12M7 3c0 5 5 6 5 9s-5 4-5 9M17 3c0 5-5 6-5 9s5 4 5 9"/>',
     pencil:'<path d="M4 20l1-4L16 5l3 3L8 19z"/>',
     up:'<path d="M6 15l6-6 6 6"/>',
+    search:'<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/>',
     down:'<path d="M6 9l6 6 6-6"/>',
     keyboard:'<rect x="2.5" y="6" width="19" height="12" rx="3"/><path d="M7 10h.01M10.5 10h.01M14 10h.01M17.5 10h.01M7.5 14h9"/>',
     backspace:'<path d="M9 5h11a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H9l-6-7z"/><path d="M13 9.5l4 4M17 9.5l-4 4"/>'
@@ -5848,6 +5875,10 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
   }
   function openAlertForm(ctx, reopen){
     let kind = 'precio';
+    if(!ctx.inv_id){ // desde favoritos: si también lo tienes invertido, se puede avisar por el valor de tu posición
+      const own = invActive().find(p=>p.symbol===ctx.symbol);
+      if(own) ctx = Object.assign({}, ctx, { inv_id:own.id, cur:own.cur, now:{ precio:ctx.now.precio, valor:invValue(own) } });
+    }
     const draw = ()=>{
       const now = kind==='precio' ? ctx.now.precio : ctx.now.valor, unit = kind==='precio' ? (ctx.cur==='EUR' ? '€' : ctx.cur==='USD' ? '$' : ctx.cur||'') : '€';
       $sheet.innerHTML = `<h2>Nuevo aviso <span class="close-x" id="closeX">✕</span></h2>
@@ -5877,6 +5908,16 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     draw();
   }
 
+  async function invSpark(el, sym){
+    try{
+      const h = await invHist(sym, addDaysStr(todayStr(), -35), '1d');
+      const c = h.c.slice(-23); const q = invQ[sym]; if(q) c.push(q.price);
+      if(c.length<2 || !document.body.contains(el)) return;
+      const lo = Math.min(...c), hi = Math.max(...c), W = 84, H = 28, X = i => i*W/(c.length-1), Y = v => H-2-(H-4)*(hi>lo ? (v-lo)/(hi-lo) : .5);
+      const col = c[c.length-1] >= c[0] ? 'var(--green)' : 'var(--red)';
+      el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}"><polyline fill="none" stroke="${col}" stroke-width="1.6" stroke-linejoin="round" points="${c.map((v,i)=>X(i).toFixed(1)+','+Y(v).toFixed(1)).join(' ')}"/></svg>`;
+    }catch(e){}
+  }
   function renderInv(){
     const ps = invActive(), all = invList(), closed = all.filter(p=>p.closed), t = invTotals(ps), M = false, desk = window.innerWidth>=1000;
     const realized = all.reduce((s,p)=>s+invRealized(p),0), hasSales = all.some(p=>invSales(p).length);
@@ -5928,20 +5969,29 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     const cashRows = invBrokers().map(id=>({ id, c:invCash(id) }));
     cashRows.forEach(r=>{ if(r.c>0) byAcc[r.id] = (byAcc[r.id]||0) + r.c; });
     const accItems = Object.entries(byAcc).map(([k,v])=>({ n:accName(k), v })).sort((a,b)=>b.v-a.v);
+    const favHtml = `<div class="inv-favs">
+        <div class="inv-favs-head"><div class="section-title" style="margin:0;">Favoritos</div></div>
+        <label class="inv-fav-search">${ico('search',16)}<input id="favQ" type="search" placeholder="Buscar índice, empresa, ETF o cripto" autocomplete="off" autocapitalize="off"></label>
+        ${invWatch().map(w=>{ const q = invQ[w.symbol], ch = q && q.prev ? q.price/q.prev-1 : 0; return `<button class="inv-fav" data-sym="${escH(w.symbol)}">
+          <span class="inv-fav-l"><b>${escH(w.name)}</b><small>${escH(w.symbol)} · ${INV_TYPES[w.type]||w.type||''}</small></span>
+          <span class="inv-spark" data-spark="${escH(w.symbol)}"></span>
+          <span class="inv-fav-r"><b class="mono">${q ? fmtPx(q.price, q.cur) : '—'}</b><span class="inv-chip ${posCls(ch)}">${pctS(ch)}</span></span></button>`; }).join('') || '<div class="inv-sub" style="padding:6px 2px;">Busca un índice o una empresa para seguirlo.</div>'}
+      </div>`;
     $app.innerHTML = `
       ${headerHtml('Inversiones')}
       ${desk ? '' : '<button class="set-back" id="invBack">‹ Resumen</button>'}
+      <div class="inv-page">
       <div class="cell total-cell inv-hero">
         <div class="t-lbl">Cartera</div>
         <div class="t-val ${M?'masked-val':''}">${M ? MASK : euro(t.value)}</div>
         ${ps.length ? `<div class="inv-hero-s">
           <span class="inv-chip ${posCls(t.gain)}">${M ? '•••' : euroS(t.gain)} · ${pctS(t.pct)}</span>
           <span class="inv-chip ${posCls(t.day)}">Hoy ${M ? '•••' : euroS(t.day)} · ${pctS(t.dayPct)}</span>
-        </div>` : ''}
-        ${hasSales ? `<div class="inv-hero-s" style="margin-top:6px;"><span class="inv-chip ${posCls(realized)}">Realizado ${M ? '•••' : euroS(realized)}</span></div>` : ''}
+          ${hasSales ? `<span class="inv-chip ${posCls(realized)}">Realizado ${M ? '•••' : euroS(realized)}</span>` : ''}
+        </div>` : (hasSales ? `<div class="inv-hero-s"><span class="inv-chip ${posCls(realized)}">Realizado ${euroS(realized)}</span></div>` : '')}
         ${invErr ? `<div class="inv-err">${invErr}</div>` : ''}
       </div>
-      ${all.some(p=>p.lots.length) ? `<div class="cell">${invChartBox('all')}</div>` : ''}
+      ${all.some(p=>p.lots.length) ? `<div class="cell inv-chart-cell">${invChartBox('all')}</div>` : ''}
       ${groups.length ? `<div class="cell inv-ops-cell"><div class="section-title" style="margin:0 0 10px;">Operaciones</div>
         <div class="inv-ops-wrap"><table class="inv-ops"><thead><tr><th>Activo</th><th>Compra</th><th>Importe</th><th>Precio</th><th>Venta</th><th>Importe</th><th>Precio</th><th>Resultado</th><th>%</th></tr></thead>
         <tbody>${groups.map(gr=>{
@@ -5951,21 +6001,18 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
           const kids = many && isOpen ? gr.kids.map(k=> opRowHtml(k.o,
             `class="op-kid ${k.o.open?'op-open':'op-done'}" data-op="${opsFlat.push(k.ref)-1}"`, false)).join('') : '';
           return head + kids; }).join('')}</tbody></table></div></div>` : ''}
-      <div class="inv-cols ${ps.length>1 || accItems.length>1 ? 'two' : ''}"><div>
-        ${cashRows.length ? `<div class="section-title" style="margin:14px 4px 8px;">Efectivo</div>` + cashRows.map(r=>`<div class="cell inv-row inv-cash" data-acc="${r.id}">
-          <div class="inv-row-l"><div class="inv-name">${escH(accName(r.id))}</div></div>
-          <div class="inv-row-r"><div class="inv-val mono ${r.c<0?'neg':''}">${M ? MASK : euro(r.c)}</div></div></div>`).join('') : ''}
-        <button class="btn-primary" id="invAdd" style="margin-top:4px;">+ Añadir inversión</button>
-        <div class="section-title" style="margin:20px 4px 8px;">Favoritos</div>
-        ${invWatch().map(w=>{ const q = invQ[w.symbol], ch = q && q.prev ? q.price/q.prev-1 : 0; return `<div class="cell inv-row inv-fav" data-sym="${escH(w.symbol)}">
-          <div class="inv-row-l"><div class="inv-name">${escH(w.name)}</div><div class="inv-sub">${escH(w.symbol)} · ${INV_TYPES[w.type]||w.type||''}</div></div>
-          <div class="inv-row-r"><div class="inv-val mono">${q ? fmtPx(q.price, q.cur) : '—'}</div><div class="inv-sub"><span class="${posCls(ch)}">${pctS(ch)}</span></div></div></div>`; }).join('')}
-        <button class="btn-ghost" id="favAdd">+ Añadir favorito</button>
-      </div>
-      ${ps.length>1 || accItems.length>1 ? `<div>
+      <div class="inv-side">
+        <div class="inv-side-a">
+          ${cashRows.length ? `<div class="section-title" style="margin:6px 4px 8px;">Efectivo</div>` + cashRows.map(r=>`<div class="cell inv-row inv-cash" data-acc="${r.id}">
+            <div class="inv-row-l"><div class="inv-name">${escH(accName(r.id))}</div></div>
+            <div class="inv-row-r"><div class="inv-val mono ${r.c<0?'neg':''}">${M ? MASK : euro(r.c)}</div></div></div>`).join('') : ''}
+          <button class="btn-primary" id="invAdd" style="margin-top:4px;">+ Añadir inversión</button>
+        </div>
         ${ps.length>1 ? `<div class="cell"><div class="section-title" style="margin:0 0 12px;">Reparto</div>${invDonutHtml(rows.map(r=>({ n:r.p.name, v:r.v })))}</div>` : ''}
         ${accItems.length>1 ? `<div class="cell"><div class="section-title" style="margin:0 0 12px;">Por cuenta</div>${invDonutHtml(accItems)}</div>` : ''}
-      </div>` : ''}</div>
+      </div>
+      <div class="cell inv-favs-cell">${favHtml}</div>
+      </div>
     `;
     $app.querySelectorAll('tr.op-kid').forEach(tr=> tr.onclick = ()=> openInvOp(opsFlat[+tr.dataset.op]));
     $app.querySelectorAll('tr.op-grp').forEach(tr=> tr.onclick = e=>{
@@ -5976,8 +6023,9 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     $app.querySelectorAll('.inv-cash').forEach(r=> r.onclick = ()=> openInvCash(r.dataset.acc));
     const bk = document.getElementById('invBack'); if(bk) bk.onclick = ()=>{ activeTab = 'resumen'; render(); };
     document.getElementById('invAdd').onclick = ()=> openInvSearch();
-    document.getElementById('favAdd').onclick = ()=> openInvSearch('fav');
+    { const fq = document.getElementById('favQ'); fq.oninput = ()=>{ const v = fq.value; if(v.trim().length>=2){ fq.value = ''; fq.blur(); openInvSearch('fav', v); } }; }
     $app.querySelectorAll('.inv-fav').forEach(r=> r.onclick = ()=> openWatch(r.dataset.sym));
+    $app.querySelectorAll('[data-spark]').forEach(el=> invSpark(el, el.dataset.spark));
     invLoadAlerts();
     $app.querySelectorAll('.inv-row[data-id]').forEach(r=> r.onclick = ()=> openInvDetail(r.dataset.id));
     if(all.some(p=>p.lots.length)) invFillChart('all', all, M);
@@ -5996,7 +6044,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
   }
 
   // ---------- hojas: buscar, aportar, detalle ----------
-  function openInvSearch(mode){
+  function openInvSearch(mode, q0){
     const fav = mode==='fav';
     $sheet.innerHTML = `<h2>${fav ? 'Añadir favorito' : 'Añadir inversión'} <span class="close-x" id="closeX">✕</span></h2>
       <div class="field" style="margin-bottom:10px;"><input type="search" id="invQ" placeholder="${fav ? 'Índice, empresa, fondo, ETF o cripto' : 'Empresa, fondo, ETF, cripto o ISIN'}" autocapitalize="off" autocomplete="off"></div>
@@ -6004,7 +6052,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     $overlay.classList.add('show');
     document.getElementById('closeX').onclick = ()=> $overlay.classList.remove('show');
     const q = document.getElementById('invQ'), res = document.getElementById('invRes');
-    setTimeout(()=>q.focus(), 60);
+    setTimeout(()=>{ q.focus(); try{ q.setSelectionRange(q.value.length, q.value.length); }catch(e){} }, 60);
     let tm = null, seq = 0;
     q.oninput = ()=>{
       clearTimeout(tm);
@@ -6030,6 +6078,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
         }catch(e){ if(my===seq) res.innerHTML = '<div class="empty-note">No se ha podido buscar. Prueba otra vez.</div>'; }
       }, 350);
     };
+    if(q0){ q.value = q0; q.oninput(); }
   }
   function openInvLot(pos, hit){
     const isNew = !pos;
