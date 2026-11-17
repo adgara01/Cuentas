@@ -1492,7 +1492,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
-  const APP_VERSION = '2026.11.17-7';
+  const APP_VERSION = '2026.11.17-8';
   const DEFAULT_STATE = {
     onboarded: false,
     accounts: [
@@ -5888,20 +5888,40 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
       const wavg = k => units ? base.reduce((s,r)=>s+r.units*(+k(r)||0),0)/units : 0;
       return { p, open:op.length>0, units, cost, out, buyPx:wavg(r=>r.lot.price), sellPx: op.length ? op[0].sellPx : wavg(r=>r.sellPx),
         first: base.map(r=>r.lot.date).sort()[0], lastSale: cl.map(r=>r.sellDate).sort().pop() || '',
-        kids: op.sort((x,y)=>y.lot.date.localeCompare(x.lot.date)).concat(cl.sort((x,y)=>y.sellDate.localeCompare(x.sellDate) || y.lot.date.localeCompare(x.lot.date))) };
+        // operaciones reales, de la más nueva (arriba) a la más antigua (abajo)
+        kids: p.lots.map(l=>{
+          const o = rs.find(r=>r.open && r.lot===l);
+          return { d:l.date, k:1, ref: o || rs.find(r=>r.lot===l), o:{ sub:'Compra', date:l.date, cost:+l.eur, units:+l.units, buyPx:+l.price, open:!!o, none:!o,
+            out: o ? o.out : 0, outUnits: o ? o.units : 0, gCost: o ? o.cost : 0, sellPx: o ? o.sellPx : 0, cur:p.cur } };
+        }).concat(invSales(p).map(sl=>{
+          const m = rs.filter(r=>r.sale===sl), u = +sl.units||0;
+          return { d:sl.date, k:2, ref:m[0], o:{ sub:'Venta', date:m.map(r=>r.lot.date).sort()[0]||'', cost:sumF(m,'cost'), units:u, buyPx: u ? m.reduce((s,r)=>s+r.units*(+r.lot.price||0),0)/u : 0,
+            open:false, sellDate:sl.date, out:+sl.eur||0, sellPx:+sl.price||0, cur:p.cur } };
+        })).sort((x,y)=> y.d.localeCompare(x.d) || y.k-x.k) };
     }).sort((x,y)=> (y.open-x.open) || (x.open ? y.out-x.out : y.lastSale.localeCompare(x.lastSale)));
     const opRowHtml = (o, attrs, tog)=>{
-      const g = o.out-o.cost, f = o.open ? ' op-fut' : '';
+      const base = o.gCost!=null ? o.gCost : o.cost, g = o.out-base, f = o.open ? ' op-fut' : '';
+      // filas desplegadas: una compra solo lleva la parte de compra; una venta, la de venta y su resultado
+      if(o.sub==='Compra' && !o.name) return `<tr ${attrs}>
+          <td class="op-name"><small class="op-kidlbl">Compra</small></td>
+          <td>${fmtDay(o.date)}</td><td class="mono">${euro(o.cost)}<small>${fmtU(o.units)}</small></td><td class="mono">${fmtPx(o.buyPx, o.cur)}</td>
+          <td></td><td></td><td></td><td></td><td></td></tr>`;
+      if(o.sub==='Venta' && !o.name) return `<tr ${attrs}>
+          <td class="op-name"><small class="op-kidlbl">Venta</small></td>
+          <td></td><td></td><td></td>
+          <td>${fmtDay(o.sellDate)}</td><td class="mono">${euro(o.out)}<small>${fmtU(o.units)}</small></td><td class="mono">${fmtPx(o.sellPx, o.cur)}</td>
+          <td class="mono ${posCls(g)}">${euroS(g)}</td><td class="mono ${posCls(g)}">${pctS(base ? g/base : 0)}</td></tr>`;
+      const outU = o.outUnits!=null && Math.abs(o.outUnits-o.units)>1e-9 ? `<small>${fmtU(o.outUnits)}</small>` : '';
       return `<tr ${attrs}>
           <td class="op-name">${o.name ? `<span class="op-nm">${tog ? `<i class="op-tog">${ico('down',14)}</i>` : ''}<span><b>${escH(o.name)}</b><small>${escH(o.sub)}</small></span></span>` : `<small class="op-kidlbl">${escH(o.sub)}</small>`}</td>
           <td>${fmtDay(o.date)}</td>
           <td class="mono">${M ? '•••' : euro(o.cost)}<small>${M ? '' : fmtU(o.units)}</small></td>
           <td class="mono">${fmtPx(o.buyPx, o.cur)}</td>
           <td class="${f}">${o.open ? 'hoy' : fmtDay(o.sellDate)}</td>
-          <td class="mono${f}">${M ? '•••' : euro(o.out)}</td>
+          <td class="mono${f}">${M ? '•••' : euro(o.out)}${outU}</td>
           <td class="mono${f}">${fmtPx(o.sellPx, o.cur)}</td>
           <td class="mono ${posCls(g)}${f}">${M ? '•••' : euroS(g)}</td>
-          <td class="mono ${posCls(g)}${f}">${pctS(o.cost ? g/o.cost : 0)}</td></tr>`;
+          <td class="mono ${posCls(g)}${f}">${pctS(base ? g/base : 0)}</td></tr>`;
     };
     const rows = ps.map(p=>({ p, v:invValue(p), c:invCost(p), d:invDayChange(p) })).sort((a,b)=>b.v-a.v);
     const byAcc = {}; ps.forEach(p=>{ byAcc[p.account] = (byAcc[p.account]||0) + invValue(p); });
@@ -5928,8 +5948,8 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
           const many = gr.kids.length>1, isOpen = invOpenGrp.has(gr.p.id);
           const head = opRowHtml({ name:gr.p.name, sub:gr.p.symbol+(many ? ' · '+gr.kids.length+' operaciones' : ''), date:gr.first, cost:gr.cost, units:gr.units, buyPx:gr.buyPx, open:gr.open, sellDate:gr.lastSale, out:gr.out, sellPx:gr.sellPx, cur:gr.p.cur },
             `class="op-grp ${gr.open?'op-open':'op-done'}${isOpen?' on':''}" data-grp="${gr.p.id}"`, many);
-          const kids = many && isOpen ? gr.kids.map(r=> opRowHtml({ name:'', sub: r.open ? 'En cartera' : 'Vendida', date:r.lot.date, cost:r.cost, units:r.units, buyPx:r.lot.price, open:r.open, sellDate:r.sellDate, out:r.out, sellPx:r.sellPx, cur:gr.p.cur },
-            `class="op-kid ${r.open?'op-open':'op-done'}" data-op="${opsFlat.push(r)-1}"`, false)).join('') : '';
+          const kids = many && isOpen ? gr.kids.map(k=> opRowHtml(k.o,
+            `class="op-kid ${k.o.open?'op-open':'op-done'}" data-op="${opsFlat.push(k.ref)-1}"`, false)).join('') : '';
           return head + kids; }).join('')}</tbody></table></div></div>` : ''}
       <div class="inv-cols ${ps.length>1 || accItems.length>1 ? 'two' : ''}"><div>
         ${cashRows.length ? `<div class="section-title" style="margin:14px 4px 8px;">Efectivo</div>` + cashRows.map(r=>`<div class="cell inv-row inv-cash" data-acc="${r.id}">
