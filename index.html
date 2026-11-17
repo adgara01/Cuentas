@@ -699,6 +699,23 @@
   .inv-legend i{width:10px;height:10px;border-radius:3px;flex-shrink:0;}
   .inv-legend span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .inv-lot .row-del{font-style:normal;}
+  .inv-ops-cell{padding:16px 0 10px;}
+  .inv-ops-cell .section-title{padding:0 16px;}
+  .inv-ops-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  .inv-ops{border-collapse:separate;border-spacing:0;width:100%;font-size:12.5px;white-space:nowrap;}
+  .inv-ops th{font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);font-weight:700;text-align:right;padding:0 10px 8px;}
+  .inv-ops td{padding:9px 10px;text-align:right;border-top:1px solid var(--line);font-weight:600;color:var(--ink);vertical-align:top;}
+  .inv-ops th:first-child,.inv-ops td:first-child{text-align:left;padding-left:16px;}
+  .inv-ops th:last-child,.inv-ops td:last-child{padding-right:16px;}
+  @media (max-width:999px){ .inv-ops .op-name b{max-width:96px;} }
+  .inv-ops td small{display:block;font-size:10.5px;color:var(--muted);font-weight:600;margin-top:2px;}
+  .inv-ops .op-name b{display:block;max-width:130px;overflow:hidden;text-overflow:ellipsis;font-weight:700;}
+  .inv-ops tr{cursor:pointer;}
+  .inv-ops tr:hover td{background:var(--bg);}
+  .inv-ops .op-fut{font-style:italic;color:var(--muted);font-weight:500;}
+  .inv-ops .op-fut.pos{color:var(--green-mid, var(--green));} .inv-ops .op-fut.neg{color:var(--red-mid, var(--red));}
+  .inv-ops td.pos{color:var(--green);} .inv-ops td.neg{color:var(--red);}
+  .inv-closed-link{border:none;background:none;font:inherit;color:var(--muted);text-decoration:underline;cursor:pointer;padding:0;}
   .inv-lot{cursor:pointer;}
   .inv-plan{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;text-align:left;border:none;background:var(--bg);border-radius:14px;padding:12px 14px;font-family:inherit;color:var(--ink);cursor:pointer;}
   .inv-plan span:first-child{display:flex;flex-direction:column;gap:3px;}
@@ -1461,7 +1478,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
-  const APP_VERSION = '2026.11.17-2';
+  const APP_VERSION = '2026.11.17-3';
   const DEFAULT_STATE = {
     onboarded: false,
     accounts: [
@@ -5311,8 +5328,49 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
   const invUnits = p => sumF(p.lots,'units') - sumF(invSales(p),'units');
   const invPaid = p => sumF(p.lots,'eur');                                   // aportado en total
   const invSold = p => sumF(invSales(p),'eur');                              // cobrado en ventas
-  const invCost = p => Math.max(0, invPaid(p) - sumF(invSales(p),'cost'));   // coste de lo que queda
-  const invRealized = p => invSales(p).reduce((s,x)=>s+(+x.eur||0)-(+x.cost||0),0);
+  // FIFO: cada venta se casa con las compras más antiguas (como Hacienda). Filas = operaciones.
+  function invFifo(p){
+    const q = p.lots.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(l=>({ l, left:+l.units||0 }));
+    const rows = [];
+    invSales(p).slice().sort((a,b)=>a.date.localeCompare(b.date)).forEach(sl=>{
+      let need = +sl.units||0;
+      for(const x of q){
+        if(need<=1e-12) break;
+        if(x.left<=1e-12 || x.l.date>sl.date) continue;
+        const take = Math.min(x.left, need); x.left -= take; need -= take;
+        rows.push({ p, lot:x.l, sale:sl, units:take, cost:(+x.l.eur||0)*take/(+x.l.units||1), out:(+sl.eur||0)*take/(+sl.units||1), sellDate:sl.date, sellPx:sl.price, open:false });
+      }
+    });
+    const q0 = invQ[p.symbol], fx = fxNow(p.cur);
+    q.forEach(x=>{
+      if(x.left<=1e-9) return;
+      const px = q0 && fx!=null ? q0.price : +x.l.price, f = q0 && fx!=null ? fx : (+x.l.fx||1);
+      rows.push({ p, lot:x.l, sale:null, units:x.left, cost:(+x.l.eur||0)*x.left/(+x.l.units||1), out:x.left*px*f, sellDate:'', sellPx:px, open:true });
+    });
+    return rows;
+  }
+  const invCost = p => invFifo(p).filter(r=>r.open).reduce((s,r)=>s+r.cost,0);    // coste de lo que queda
+  const invRealized = p => invFifo(p).filter(r=>!r.open).reduce((s,r)=>s+r.out-r.cost,0);
+  const invSaleResult = (p, sl) => invFifo(p).filter(r=>r.sale===sl).reduce((s,r)=>s+r.out-r.cost,0);
+  function invOps(){
+    const rows = invList().flatMap(invFifo);
+    return rows.filter(r=>r.open).sort((a,b)=>b.lot.date.localeCompare(a.lot.date))
+      .concat(rows.filter(r=>!r.open).sort((a,b)=>b.sellDate.localeCompare(a.sellDate) || b.lot.date.localeCompare(a.lot.date)));
+  }
+  async function invOpSeries(r){
+    const p = r.p, d0 = r.lot.date, end = r.open ? todayStr() : r.sellDate;
+    const interval = (Date.parse(end+'T00:00:00')-Date.parse(d0+'T00:00:00'))/864e5 > 1100 ? '1wk' : '1d';
+    const from = addDaysStr(d0,-10);
+    const h = await invHist(p.symbol, from, interval);
+    const hf = (!p.cur || p.cur==='EUR') ? null : await invHist(fxSym(p.cur), from, interval);
+    const days = h.ds.filter(d=>d>d0 && d<end && d<todayStr());
+    const out = [{ d:d0, v:r.cost, i:r.cost }].concat(days.map(d=>{
+      const fx = hf ? priceAt(hf, d)*(invPence(p.cur)?0.01:1) : 1;
+      return { d, v:r.units*(priceAt(h, d)||0)*fx, i:r.cost };
+    }));
+    out.push({ d:end, v:r.out, i:r.cost });
+    return out;
+  }
   function invValue(p){
     const u = invUnits(p); if(u<=1e-9) return 0;
     const q = invQ[p.symbol], fx = fxNow(p.cur);
@@ -5557,8 +5615,8 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     if(!allClosed) out.push({ d:today, v:ps.reduce((s,p)=>s+invValue(p),0), i:ps.reduce((s,p)=>s+invPaid(p)-invSold(p),0) });
     return out;
   }
-  function invCut(series){
-    const r = INV_RANGES.find(x=>x[0]===invRange), n = r ? r[1] : 0;
+  function invCut(series, rk){
+    const r = INV_RANGES.find(x=>x[0]===(rk||invRange)), n = r ? r[1] : 0;
     if(!n) return series;
     const cut = addDaysStr(todayStr(), -n), s = series.filter(x=>x.d>=cut);
     if(s.length>=2) return s;
@@ -5588,17 +5646,18 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     <div class="inv-ticks">${ticks.map(i=>`<span>${fmtDay(series[i].d)}</span>`).join('')}</div>
     <div class="inv-dot" style="display:none;background:${col}"></div>`;
   }
-  function invChartLabel(series, i, masked){
+  function invChartLabel(series, i, masked, ilbl){
     const a = series[0], b = series[i];
     const perf = b.v - a.v - (b.i - a.i), base = a.v + (b.i - a.i);
     const head = i===series.length-1 ? '' : fmtDay(b.d);
     return `<div class="inv-lbl-v mono">${masked ? MASK : euro(b.v)}</div>
-      <div class="inv-lbl-s"><span class="inv-chip ${posCls(perf)}">${masked ? '•••' : euroS(perf)} · ${pctS(base ? perf/base : 0)}</span>${head ? `<span>${head}</span>` : ''}<span class="inv-lbl-i">Aportado ${masked ? '•••' : euro(b.i)}</span></div>`;
+      <div class="inv-lbl-s"><span class="inv-chip ${posCls(perf)}">${masked ? '•••' : euroS(perf)} · ${pctS(base ? perf/base : 0)}</span>${head ? `<span>${head}</span>` : ''}<span class="inv-lbl-i">${ilbl||'Aportado'} ${masked ? '•••' : euro(b.i)}</span></div>`;
   }
   function invWireChart(box, series, masked){
     const svg = box.querySelector('.inv-svg'), lbl = box.querySelector('.inv-lbl'), cur = box.querySelector('.inv-cur'), dot = box.querySelector('.inv-dot');
     if(!svg) return;
-    lbl.innerHTML = invChartLabel(series, series.length-1, masked);
+    const il = box.dataset.ilbl || '';
+    lbl.innerHTML = invChartLabel(series, series.length-1, masked, il);
     const at = ev => {
       const r = svg.getBoundingClientRect(), x = Math.min(Math.max(ev.clientX - r.left, 0), r.width);
       const i = Math.round(x/r.width*(series.length-1));
@@ -5607,27 +5666,28 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
       const vals = series.flatMap(s=>[s.v,s.i]); let lo = Math.min(...vals), hi = Math.max(...vals); const pad = (hi-lo)*0.08 || hi*0.05 || 1; lo -= pad; hi += pad;
       const py = 12 + (vb.height-36)*(1-(series[i].v-lo)/(hi-lo));
       dot.style.display = ''; dot.style.left = (px/vb.width*r.width)+'px'; dot.style.top = (py/vb.height*r.height)+'px';
-      lbl.innerHTML = invChartLabel(series, i, masked);
+      lbl.innerHTML = invChartLabel(series, i, masked, il);
     };
-    const end = ()=>{ cur.style.display = 'none'; dot.style.display = 'none'; lbl.innerHTML = invChartLabel(series, series.length-1, masked); };
+    const end = ()=>{ cur.style.display = 'none'; dot.style.display = 'none'; lbl.innerHTML = invChartLabel(series, series.length-1, masked, il); };
     svg.addEventListener('pointerdown', e=>{ at(e); });
     svg.addEventListener('pointermove', e=>{ if(e.pointerType==='mouse' || e.buttons) at(e); });
     svg.addEventListener('pointerleave', end); svg.addEventListener('pointerup', e=>{ if(e.pointerType!=='mouse') end(); }); svg.addEventListener('pointercancel', end);
     svg.style.touchAction = 'pan-y';
   }
-  function invChartBox(key){
-    return `<div class="inv-chart" id="invBox-${key}">
+  function invChartBox(key, ranges, cur, ilbl){
+    ranges = ranges || INV_RANGES.map(r=>r[0]); cur = cur || invRange;
+    return `<div class="inv-chart" id="invBox-${key}" data-rk="${cur}" data-ilbl="${ilbl||''}">
       <div class="inv-chart-top"><div class="inv-lbl"></div>
-        <div class="inv-rng">${INV_RANGES.map(r=>`<button data-r="${r[0]}" class="${r[0]===invRange?'on':''}">${r[0]}</button>`).join('')}</div></div>
+        <div class="inv-rng">${ranges.map(r=>`<button data-r="${r}" class="${r===cur?'on':''}">${r}</button>`).join('')}</div></div>
       <div class="inv-chart-body"><div class="inv-load"></div></div></div>`;
   }
-  async function invFillChart(key, ps, masked){
+  async function invFillChart(key, ps, masked, seriesFn){
     const box = document.getElementById('invBox-'+key); if(!box) return;
     const body = box.querySelector('.inv-chart-body');
-    box.querySelectorAll('.inv-rng button').forEach(b=> b.onclick = ()=>{ invRange = b.dataset.r; box.querySelectorAll('.inv-rng button').forEach(x=>x.classList.toggle('on', x===b)); draw(); });
+    box.querySelectorAll('.inv-rng button').forEach(b=> b.onclick = ()=>{ box.dataset.rk = b.dataset.r; if(!seriesFn) invRange = b.dataset.r; box.querySelectorAll('.inv-rng button').forEach(x=>x.classList.toggle('on', x===b)); draw(); });
     let all = null;
-    const draw = ()=>{ if(!all) return; const s = invCut(all); body.innerHTML = invChartHtml(s, key); invWireChart(box, s, masked); };
-    try{ all = await invSeries(ps); }
+    const draw = ()=>{ if(!all) return; const s = invCut(all, box.dataset.rk); body.innerHTML = invChartHtml(s, key); invWireChart(box, s, masked); };
+    try{ all = seriesFn ? await seriesFn() : await invSeries(ps); }
     catch(e){ body.innerHTML = '<div class="empty-note">No se ha podido cargar el histórico.</div>'; return; }
     if(!document.body.contains(box)) return;
     if(all.length<2){ body.innerHTML = '<div class="empty-note">El gráfico aparece a partir del segundo día.</div>'; box.querySelector('.inv-lbl').innerHTML = all.length ? invChartLabel(all, 0, masked) : ''; return; }
@@ -5644,6 +5704,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
   function renderInv(){
     const ps = invActive(), all = invList(), closed = all.filter(p=>p.closed), t = invTotals(ps), M = privacyMode, desk = window.innerWidth>=1000;
     const realized = all.reduce((s,p)=>s+invRealized(p),0), hasSales = all.some(p=>invSales(p).length);
+    const ops = invOps();
     const rows = ps.map(p=>({ p, v:invValue(p), c:invCost(p), d:invDayChange(p) })).sort((a,b)=>b.v-a.v);
     const byAcc = {}; ps.forEach(p=>{ byAcc[p.account] = (byAcc[p.account]||0) + invValue(p); });
     const accItems = Object.entries(byAcc).map(([k,v])=>({ n:accName(k), v })).sort((a,b)=>b.v-a.v);
@@ -5662,23 +5723,35 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
         ${invErr ? `<div class="inv-err">${invErr}</div>` : ''}
       </div>
       ${all.some(p=>p.lots.length) ? `<div class="cell">${invChartBox('all')}</div>` : ''}
+      ${ops.length ? `<div class="cell inv-ops-cell"><div class="section-title" style="margin:0 0 10px;">Operaciones</div>
+        <div class="inv-ops-wrap"><table class="inv-ops"><thead><tr><th>Activo</th><th>Compra</th><th>Importe</th><th>Precio</th><th>Venta</th><th>Importe</th><th>Precio</th><th>Resultado</th><th>%</th></tr></thead>
+        <tbody>${ops.map((r,i)=>{ const g = r.out-r.cost, f = r.open ? ' op-fut' : '', cur = r.p.cur; return `<tr class="${r.open?'op-open':'op-done'}" data-op="${i}">
+          <td class="op-name"><b>${escH(r.p.name)}</b><small>${escH(r.p.symbol)}</small></td>
+          <td>${fmtDay(r.lot.date)}</td>
+          <td class="mono">${M ? '•••' : euro(r.cost)}<small>${M ? '' : fmtU(r.units)}</small></td>
+          <td class="mono">${fmtPx(r.lot.price, cur)}</td>
+          <td class="${f}">${r.open ? 'hoy' : fmtDay(r.sellDate)}</td>
+          <td class="mono${f}">${M ? '•••' : euro(r.out)}</td>
+          <td class="mono${f}">${fmtPx(r.sellPx, cur)}</td>
+          <td class="mono ${posCls(g)}${f}">${M ? '•••' : euroS(g)}</td>
+          <td class="mono ${posCls(g)}${f}">${pctS(r.cost ? g/r.cost : 0)}</td></tr>`; }).join('')}</tbody></table></div></div>` : ''}
       <div class="inv-cols ${ps.length>1 || accItems.length>1 ? 'two' : ''}"><div>
+        ${ps.length ? `<div class="section-title" style="margin:6px 4px 8px;">Posiciones</div>` : ''}
         ${rows.map(({p,v,c,d})=>{ const g = v-c; return `<div class="cell inv-row" data-id="${p.id}">
           <div class="inv-row-l"><div class="inv-name">${escH(p.name)}</div><div class="inv-sub">${escH(p.symbol)} · ${escH(accName(p.account))}</div></div>
           <div class="inv-row-r"><div class="inv-val mono">${M ? MASK : euro(v)}</div>
             <div class="inv-sub"><span class="${posCls(g)}">${pctS(c ? g/c : 0)}</span> · <span class="${posCls(d)}">hoy ${pctS(v-d ? d/(v-d) : 0)}</span></div></div>
         </div>`; }).join('')}
+        ${closed.length ? `<div class="inv-sub" style="margin:2px 4px 10px;">${closed.map(p=>`<button class="inv-closed-link" data-id="${p.id}">${escH(p.name)}</button>`).join(' · ')}</div>` : ''}
         <button class="btn-primary" id="invAdd" style="margin-top:4px;">+ Añadir inversión</button>
-        ${closed.length ? `<div class="section-title" style="margin:20px 4px 8px;">Cerradas</div>` + closed.slice().sort((a,b)=>b.closed.localeCompare(a.closed)).map(p=>{ const r = invRealized(p), paid = invPaid(p); return `<div class="cell inv-row inv-closed" data-id="${p.id}">
-          <div class="inv-row-l"><div class="inv-name">${escH(p.name)}</div><div class="inv-sub">${fmtDay(p.closed)} · ${escH(accName(p.account))}</div></div>
-          <div class="inv-row-r"><div class="inv-val mono ${posCls(r)}">${M ? '•••' : euroS(r)}</div><div class="inv-sub"><span class="${posCls(r)}">${pctS(paid ? r/paid : 0)}</span></div></div>
-        </div>`; }).join('') : ''}
       </div>
       ${ps.length>1 || accItems.length>1 ? `<div>
         ${ps.length>1 ? `<div class="cell"><div class="section-title" style="margin:0 0 12px;">Reparto</div>${invDonutHtml(rows.map(r=>({ n:r.p.name, v:r.v })))}</div>` : ''}
         ${accItems.length>1 ? `<div class="cell"><div class="section-title" style="margin:0 0 12px;">Por cuenta</div>${invDonutHtml(accItems)}</div>` : ''}
       </div>` : ''}</div>
     `;
+    $app.querySelectorAll('tr[data-op]').forEach(tr=> tr.onclick = ()=> openInvOp(ops[+tr.dataset.op]));
+    $app.querySelectorAll('.inv-closed-link').forEach(b=> b.onclick = ()=> openInvDetail(b.dataset.id));
     const bk = document.getElementById('invBack'); if(bk) bk.onclick = ()=>{ activeTab = 'resumen'; render(); };
     document.getElementById('privacyToggle').onclick = ()=>{ privacyMode = !privacyMode; renderInv(); };
     document.getElementById('invAdd').onclick = ()=> openInvSearch();
@@ -5814,7 +5887,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
         ? `<div class="exp-row inv-lot" data-edit="${x.id}"><div class="exp-name">${fmtDay(x.date)}${x.auto ? ' · mensual' : ''}${x.tx ? ' · '+escH(txAcc(x.tx,'account')) : ''}</div>
             <div style="display:flex;align-items:center;gap:10px;"><span class="mono" style="font-weight:700;">${mv(euro(x.eur))}</span><span class="inv-sub mono">${mv(fmtU(x.units))}</span><i class="row-del" data-lot="${x.id}" title="Quitar">✕</i></div></div>`
         : `<div class="exp-row inv-lot inv-sale"><div class="exp-name">${fmtDay(x.date)} · venta${x.tx ? ' · '+escH(txAcc(x.tx,'toAccount')) : ''}</div>
-            <div style="display:flex;align-items:center;gap:10px;"><span class="mono" style="font-weight:700;">−${mv(euro(x.eur))}</span><span class="inv-sub mono ${posCls(x.eur-x.cost)}">${mv(euroS(x.eur-x.cost))}</span><i class="row-del" data-sale="${x.id}" title="Quitar">✕</i></div></div>`).join('')}
+            <div style="display:flex;align-items:center;gap:10px;"><span class="mono" style="font-weight:700;">−${mv(euro(x.eur))}</span><span class="inv-sub mono ${posCls(invSaleResult(p,x))}">${mv(euroS(invSaleResult(p,x)))}</span><i class="row-del" data-sale="${x.id}" title="Quitar">✕</i></div></div>`).join('')}
       <button class="btn-primary" id="idAdd" style="margin-top:14px;">+ ${cl ? 'Volver a comprar' : 'Añadir aportación'}</button>
       ${cl ? '' : '<button class="btn-ghost" id="idSell" style="margin-top:8px;">Vender</button>'}
       <button class="btn-secondary" id="idDel" style="margin-top:8px;">Eliminar inversión</button>`;
@@ -5849,6 +5922,26 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
       dropTx(p.lots.concat(sales).map(l=>l.tx)); state.investments = invList().filter(y=>y!==p);
       await saveState(); $overlay.classList.remove('show'); showToast('Inversión eliminada'); renderInv();
     };
+  }
+  function openInvOp(r){
+    if(!r) return;
+    const p = r.p, g = r.out-r.cost, M = privacyMode, mv = x => M ? '•••' : x, cur = p.cur;
+    $sheet.innerHTML = `<h2>${escH(p.name)} <span class="close-x" id="closeX">✕</span></h2>
+      <div class="inv-sub" style="margin:-6px 0 12px;">${escH(p.symbol)} · ${fmtDay(r.lot.date)} → ${r.open ? 'hoy' : fmtDay(r.sellDate)}</div>
+      ${invChartBox('op', ['Compra','1M','3M','6M','1A'], 'Compra', 'Compra')}
+      <div class="inv-stats">
+        <div><span>Importe compra</span><b class="mono">${mv(euro(r.cost))}</b></div>
+        <div><span>${r.open ? 'Valor ahora' : 'Importe venta'}</span><b class="mono">${mv(euro(r.out))}</b></div>
+        <div><span>Precio compra</span><b class="mono">${fmtPx(r.lot.price, cur)}</b></div>
+        <div><span>${r.open ? 'Precio ahora' : 'Precio venta'}</span><b class="mono">${fmtPx(r.sellPx, cur)}</b></div>
+        <div><span>Participaciones</span><b class="mono">${mv(fmtU(r.units))}</b></div>
+        <div><span>Resultado</span><b class="mono ${posCls(g)}">${mv(euroS(g))} · ${pctS(r.cost ? g/r.cost : 0)}</b></div>
+      </div>
+      <button class="btn-ghost" id="opPos" style="margin-top:14px;">Ver ${escH(p.name.length>28 ? p.symbol : p.name)}</button>`;
+    $overlay.classList.add('show');
+    document.getElementById('closeX').onclick = ()=> $overlay.classList.remove('show');
+    document.getElementById('opPos').onclick = ()=> openInvDetail(p.id);
+    invFillChart('op', null, M, ()=>invOpSeries(r));
   }
   function openInvSell(p){
     const dest = state.accounts.filter(a=>!a.manual && a.id!==p.account);
@@ -5891,8 +5984,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
         else { eur = eurIn; units = eur/(price*fx); }
         if(units > held*(1+1e-6)+1e-9) throw new Error('Ese día tenías '+fmtU(held));
         units = Math.min(units, held);
-        const basis = sumF(p.lots.filter(l=>l.date<=date),'eur') - sumF(invSales(p).filter(x=>x.date<=date),'cost');
-        const sale = { id:uid(), date, units, eur, price: eur/(units*fx), fx, cost: basis*units/held };
+        const sale = { id:uid(), date, units, eur, price: eur/(units*fx), fx };
         if(to){
           const toA = state.accounts.find(a=>a.id===to);
           const tx = { id:uid(), ts:Date.now(), type:'Movimiento', account:p.account, toAccount:to, category: toA && toA.type==='ahorro' ? 'Ahorro' : 'Transferencia', amount:eur, comment:'Venta · '+p.name.slice(0,40), date, inv:p.id };
