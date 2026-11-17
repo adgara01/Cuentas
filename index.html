@@ -727,8 +727,8 @@
   .inv-ops tr.op-kid:last-child td{border-bottom:1px solid var(--line);}
   .inv-alert.fired .exp-name{color:var(--muted);}
   .inv-re{border:none;background:none;font:inherit;font-size:12px;font-weight:700;color:var(--acc, var(--green));cursor:pointer;padding:0;}
-  .inv-page{display:flex;flex-direction:column;}
-  .inv-page > .inv-hero{order:1;} .inv-page > .inv-chart-cell{order:2;} .inv-page > .inv-ops-cell{order:3;} .inv-page > .inv-acts{order:4;margin-bottom:12px;} .inv-page > .inv-favs-cell{order:5;} .inv-page > .inv-dist{order:6;}
+  .inv-page,.inv-lcol,.inv-rcol{display:flex;flex-direction:column;}
+  .inv-rcol > .inv-acts{order:1;margin-bottom:12px;} .inv-rcol > .inv-favs-cell{order:2;}
   .inv-favs-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
   .inv-fav-search{display:flex;align-items:center;gap:8px;background:var(--bg);border-radius:14px;padding:0 12px;margin-bottom:10px;color:var(--muted);}
   .inv-fav-search input{flex:1;border:none;background:none;outline:none;font:inherit;font-size:14px;padding:11px 0;color:var(--ink);min-width:0;}
@@ -741,21 +741,24 @@
   .inv-fav-r b{font-size:14px;}
   .inv-spark{width:84px;height:28px;display:block;}
   @media (min-width:1000px){
-    .inv-page{display:grid;grid-template-columns:minmax(300px,360px) 1fr;grid-template-areas:"hero chart" "acts chart" "ops ops" "favs favs" "dist dist";grid-template-rows:auto 1fr;gap:0 22px;align-items:start;}
-    .inv-page > .inv-hero{grid-area:hero;padding:22px 20px;}
-    .inv-page > .inv-chart-cell{grid-area:chart;}
-    .inv-page > .inv-acts{grid-area:acts;}
-    .inv-page > .inv-ops-cell{grid-area:ops;}
-    .inv-page > .inv-favs-cell{grid-area:favs;}
-    .inv-page > .inv-dist{grid-area:dist;display:grid;grid-template-columns:1fr 1fr;gap:0 22px;align-items:start;}
-    .inv-favs-cell .inv-fav-search{max-width:440px;}
-    .inv-favs-cell .inv-favs{display:block;}
-    .inv-fav-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));column-gap:24px;}
+    .inv-page{display:grid;grid-template-columns:minmax(0,2fr) minmax(300px,1fr);gap:0 22px;align-items:start;}
+    .inv-rcol > .inv-favs-cell{order:1;} .inv-rcol > .inv-acts{order:2;margin-top:4px;}
+    .inv-lcol > .inv-hero{display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap;padding:20px 22px;}
+    .inv-lcol > .inv-hero .inv-hero-s{margin-top:0;justify-content:flex-end;}
+    .inv-dist{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:0 22px;align-items:start;}
+    .inv-lcol .inv-ops th,.inv-lcol .inv-ops td{padding-left:7px;padding-right:7px;}
+    .inv-lcol .inv-ops th:first-child,.inv-lcol .inv-ops td:first-child{padding-left:16px;}
+    .inv-lcol .inv-ops th:last-child,.inv-lcol .inv-ops td:last-child{padding-right:16px;}
+    .inv-lcol .inv-ops .op-name b{max-width:150px;}
+    .inv-lcol .inv-ops{font-size:12px;}
+    .inv-fav-list{display:block;}
     .inv-hero .t-val{font-size:34px;}
     .inv-hero .inv-hero-s{justify-content:flex-start;}
     .inv-hero .t-lbl{text-align:left;} .inv-hero .t-val{text-align:left;}
     .inv-chart-cell .inv-svg{height:300px;}
   }
+  .inv-ops .op-st{display:inline-block;vertical-align:1px;margin-right:6px;font-style:normal;font-size:10px;font-weight:800;letter-spacing:.3px;padding:2px 7px;border-radius:999px;background:var(--bg);color:var(--muted);}
+  .inv-ops .op-st.on{background:var(--amber-bg, rgba(240,180,40,.2));color:var(--amber, #B07C08);}
   .inv-sel{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px;}
   .inv-sel button{border:1px solid var(--line);background:none;font:inherit;font-size:12.5px;font-weight:700;color:var(--muted);padding:6px 12px;border-radius:999px;cursor:pointer;}
   .inv-sel button.on{background:var(--ink);color:var(--on-ink, #fff);border-color:var(--ink);}
@@ -1524,7 +1527,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
-  const APP_VERSION = '2026.11.17-11';
+  const APP_VERSION = '2026.11.17-13';
   const DEFAULT_STATE = {
     onboarded: false,
     accounts: [
@@ -5970,7 +5973,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
           <td class="mono ${posCls(g)}">${euroS(g)}</td><td class="mono ${posCls(g)}">${pctS(base ? g/base : 0)}</td></tr>`;
       const outU = o.outUnits!=null && Math.abs(o.outUnits-o.units)>1e-9 ? `<small>${fmtU(o.outUnits)}</small>` : '';
       return `<tr ${attrs}>
-          <td class="op-name">${o.name ? `<span class="op-nm">${tog ? `<i class="op-tog">${ico('down',14)}</i>` : ''}<span><b>${escH(o.name)}</b><small>${escH(o.sub)}</small></span></span>` : `<small class="op-kidlbl">${escH(o.sub)}</small>`}</td>
+          <td class="op-name">${o.name ? `<span class="op-nm">${tog ? `<i class="op-tog">${ico('down',14)}</i>` : ''}<span><b>${escH(o.name)}</b><small><i class="op-st ${o.open?'on':''}">${o.open?'Activa':'Cerrada'}</i>${escH(o.sub)}</small></span></span>` : `<small class="op-kidlbl">${escH(o.sub)}</small>`}</td>
           <td>${fmtDay(o.date)}</td>
           <td class="mono">${M ? '•••' : euro(o.cost)}<small>${M ? '' : fmtU(o.units)}</small></td>
           <td class="mono">${fmtPx(o.buyPx, o.cur)}</td>
@@ -5996,10 +5999,10 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     $app.innerHTML = `
       ${headerHtml('Inversiones')}
       ${desk ? '' : '<button class="set-back" id="invBack">‹ Resumen</button>'}
-      <div class="inv-page">
-      <div class="cell total-cell inv-hero">
+      <div class="inv-page"><div class="inv-lcol">
+      <div class="cell total-cell inv-hero"><div>
         <div class="t-lbl">Cartera</div>
-        <div class="t-val ${M?'masked-val':''}">${M ? MASK : euro(t.value)}</div>
+        <div class="t-val ${M?'masked-val':''}">${M ? MASK : euro(t.value)}</div></div>
         ${ps.length ? `<div class="inv-hero-s">
           <span class="inv-chip ${posCls(t.gain)}">${M ? '•••' : euroS(t.gain)} · ${pctS(t.pct)}</span>
           <span class="inv-chip ${posCls(t.day)}">Hoy ${M ? '•••' : euroS(t.day)} · ${pctS(t.dayPct)}</span>
@@ -6019,6 +6022,11 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
           const kids = many && isOpen ? gr.kids.map(k=> opRowHtml(k.o,
             `class="op-kid ${k.o.open?'op-open':'op-done'}" data-op="${opsFlat.push(k.ref)-1}"`, false)).join('') : '';
           return head + kids; }).join('')}</tbody></table></div></div>` : ''}
+      ${ps.length>1 || accItems.length>1 ? `<div class="inv-dist">
+        ${ps.length>1 ? `<div class="cell"><div class="section-title" style="margin:0 0 12px;">Reparto</div>${invDonutHtml(rows.map(r=>({ n:r.p.name, v:r.v })))}</div>` : ''}
+        ${accItems.length>1 ? `<div class="cell"><div class="section-title" style="margin:0 0 12px;">Por cuenta</div>${invDonutHtml(accItems)}</div>` : ''}
+      </div>` : ''}
+      </div><div class="inv-rcol">
       <div class="inv-acts">
           ${cashRows.length ? `<div class="section-title" style="margin:6px 4px 8px;">Efectivo</div>` + cashRows.map(r=>`<div class="cell inv-row inv-cash" data-acc="${r.id}">
             <div class="inv-row-l"><div class="inv-name">${escH(accName(r.id))}</div></div>
@@ -6026,10 +6034,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
           <button class="btn-primary" id="invAdd" style="margin-top:4px;">+ Añadir inversión</button>
       </div>
       <div class="cell inv-favs-cell">${favHtml}</div>
-      ${ps.length>1 || accItems.length>1 ? `<div class="inv-dist">
-        ${ps.length>1 ? `<div class="cell"><div class="section-title" style="margin:0 0 12px;">Reparto</div>${invDonutHtml(rows.map(r=>({ n:r.p.name, v:r.v })))}</div>` : ''}
-        ${accItems.length>1 ? `<div class="cell"><div class="section-title" style="margin:0 0 12px;">Por cuenta</div>${invDonutHtml(accItems)}</div>` : ''}
-      </div>` : ''}
+      </div>
       </div>
     `;
     $app.querySelectorAll('tr.op-kid').forEach(tr=> tr.onclick = ()=> openInvOp(opsFlat[+tr.dataset.op]));
