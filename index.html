@@ -715,6 +715,7 @@
   .inv-ops .op-fut{font-style:italic;color:var(--muted);font-weight:500;}
   .inv-ops .op-fut.pos{color:var(--green-mid, var(--green));} .inv-ops .op-fut.neg{color:var(--red-mid, var(--red));}
   .inv-ops td.pos{color:var(--green);} .inv-ops td.neg{color:var(--red);}
+  .inv-val.neg{color:var(--red);}
   .inv-closed-link{border:none;background:none;font:inherit;color:var(--muted);text-decoration:underline;cursor:pointer;padding:0;}
   .inv-lot{cursor:pointer;}
   .inv-plan{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;text-align:left;border:none;background:var(--bg);border-radius:14px;padding:12px 14px;font-family:inherit;color:var(--ink);cursor:pointer;}
@@ -1478,7 +1479,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
-  const APP_VERSION = '2026.11.17-3';
+  const APP_VERSION = '2026.11.17-4';
   const DEFAULT_STATE = {
     onboarded: false,
     accounts: [
@@ -5382,7 +5383,17 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     if(p.closed || !q || q.prev==null || fx==null) return 0;
     return invUnitsAt(p, todayStr(), true)*(q.price-q.prev)*fx;
   }
-  const invAccValue = accId => invOf(accId).reduce((s,p)=>s+invValue(p),0);
+  // Efectivo del bróker: lo que entra en la cuenta (movimientos) − compras pagadas desde ella + ventas que se quedan; cashAdj = ajuste a mano.
+  // Una compra "ya estaba invertido" (sin tx ni cash) no toca el efectivo. Una venta con movimiento a otra cuenta se compensa sola.
+  function invCash(accId){
+    const acc = state.accounts.find(a=>a.id===accId); if(!acc) return 0;
+    let c = ledgerBalance(accId) + (+acc.cashAdj||0);
+    invOf(accId).forEach(p=>{ p.lots.forEach(l=>{ if(l.tx || l.cash) c -= +l.eur||0; }); invSales(p).forEach(x=>{ c += +x.eur||0; }); });
+    return Math.abs(c) < 0.005 ? 0 : c;
+  }
+  const invAccValue = accId => invOf(accId).reduce((s,p)=>s+invValue(p),0) + invCash(accId);
+  const invBrokers = ()=> [...new Set(invList().map(p=>p.account))].filter(id=>state.accounts.some(a=>a.id===id));
+  const invFromName = (from, acc) => from==='__cash' ? 'efectivo de '+accName(acc) : accName(from);
   function invTotals(ps){
     ps = ps || invActive();
     const value = ps.reduce((s,p)=>s+invValue(p),0), cost = ps.reduce((s,p)=>s+invCost(p),0), day = ps.reduce((s,p)=>s+invDayChange(p),0);
@@ -5475,7 +5486,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
             if(!h.ds.length || h.ds[h.ds.length-1] < d) break; // el precio de ese día aún no está publicado
             lot = await invMakeLot(p, d, p.plan.eur, 0);
           }catch(e){ break; }
-          lot.auto = 1;
+          lot.auto = 1; if(p.plan.from==='__cash') lot.cash = 1;
           const tx = invAddTx(p, p.plan.eur, d, p.plan.from); if(tx) lot.tx = tx;
           p.lots.push(lot); p.plan.last = d; n++;
         }
@@ -5487,7 +5498,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
   }
   function openInvPlan(p){
     const pl = p.plan && p.plan.on ? p.plan : null;
-    const fromOpts = `<option value="">Ninguna</option>` + state.accounts.filter(a=>!a.manual && a.id!==p.account).map(a=>`<option value="${a.id}" ${pl && pl.from===a.id ? 'selected' : ''}>${escH(a.name)}</option>`).join('');
+    const fromOpts = `<option value="">Ninguna</option><option value="__cash" ${pl && pl.from==='__cash' ? 'selected' : ''}>Efectivo de ${escH(accName(p.account))}</option>` + state.accounts.filter(a=>!a.manual && a.id!==p.account).map(a=>`<option value="${a.id}" ${pl && pl.from===a.id ? 'selected' : ''}>${escH(a.name)}</option>`).join('');
     $sheet.innerHTML = `<h2>Compra mensual <span class="close-x" id="closeX">✕</span></h2>
       <div class="inv-sub" style="margin:-6px 0 14px;">${escH(p.name)}</div>
       <div class="two-col">
@@ -5707,6 +5718,8 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     const ops = invOps();
     const rows = ps.map(p=>({ p, v:invValue(p), c:invCost(p), d:invDayChange(p) })).sort((a,b)=>b.v-a.v);
     const byAcc = {}; ps.forEach(p=>{ byAcc[p.account] = (byAcc[p.account]||0) + invValue(p); });
+    const cashRows = invBrokers().map(id=>({ id, c:invCash(id) }));
+    cashRows.forEach(r=>{ if(r.c>0) byAcc[r.id] = (byAcc[r.id]||0) + r.c; });
     const accItems = Object.entries(byAcc).map(([k,v])=>({ n:accName(k), v })).sort((a,b)=>b.v-a.v);
     $app.innerHTML = `
       ${headerHtml('Inversiones')}
@@ -5743,6 +5756,9 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
             <div class="inv-sub"><span class="${posCls(g)}">${pctS(c ? g/c : 0)}</span> · <span class="${posCls(d)}">hoy ${pctS(v-d ? d/(v-d) : 0)}</span></div></div>
         </div>`; }).join('')}
         ${closed.length ? `<div class="inv-sub" style="margin:2px 4px 10px;">${closed.map(p=>`<button class="inv-closed-link" data-id="${p.id}">${escH(p.name)}</button>`).join(' · ')}</div>` : ''}
+        ${cashRows.length ? `<div class="section-title" style="margin:14px 4px 8px;">Efectivo</div>` + cashRows.map(r=>`<div class="cell inv-row inv-cash" data-acc="${r.id}">
+          <div class="inv-row-l"><div class="inv-name">${escH(accName(r.id))}</div></div>
+          <div class="inv-row-r"><div class="inv-val mono ${r.c<0?'neg':''}">${M ? MASK : euro(r.c)}</div></div></div>`).join('') : ''}
         <button class="btn-primary" id="invAdd" style="margin-top:4px;">+ Añadir inversión</button>
       </div>
       ${ps.length>1 || accItems.length>1 ? `<div>
@@ -5752,10 +5768,11 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     `;
     $app.querySelectorAll('tr[data-op]').forEach(tr=> tr.onclick = ()=> openInvOp(ops[+tr.dataset.op]));
     $app.querySelectorAll('.inv-closed-link').forEach(b=> b.onclick = ()=> openInvDetail(b.dataset.id));
+    $app.querySelectorAll('.inv-cash').forEach(r=> r.onclick = ()=> openInvCash(r.dataset.acc));
     const bk = document.getElementById('invBack'); if(bk) bk.onclick = ()=>{ activeTab = 'resumen'; render(); };
     document.getElementById('privacyToggle').onclick = ()=>{ privacyMode = !privacyMode; renderInv(); };
     document.getElementById('invAdd').onclick = ()=> openInvSearch();
-    $app.querySelectorAll('.inv-row').forEach(r=> r.onclick = ()=> openInvDetail(r.dataset.id));
+    $app.querySelectorAll('.inv-row[data-id]').forEach(r=> r.onclick = ()=> openInvDetail(r.dataset.id));
     if(all.some(p=>p.lots.length)) invFillChart('all', all, M);
     invKick();
   }
@@ -5803,7 +5820,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     const ahorro = state.accounts.filter(a=>a.type==='ahorro'), others = state.accounts.filter(a=>a.type!=='ahorro');
     const guess = (ahorro.find(a=>/broker|bolsa|invers|trade|myinv|robin|degiro|etoro|xtb|ing/i.test(a.name)) || ahorro[0] || state.accounts[0]).id;
     const target = isNew ? guess : pos.account;
-    const fromOpts = acc => `<option value="">Ninguna (ya estaba invertido)</option>` + state.accounts.filter(a=>!a.manual && a.id!==acc).map(a=>`<option value="${a.id}">${escH(a.name)}</option>`).join('');
+    const fromOpts = acc => `<option value="">Ninguna (ya estaba invertido)</option><option value="__cash">Efectivo de ${escH(accName(acc))}</option>` + state.accounts.filter(a=>!a.manual && a.id!==acc).map(a=>`<option value="${a.id}">${escH(a.name)}</option>`).join('');
     $sheet.innerHTML = `<h2>${isNew ? escH(hit.name) : 'Aportación'} <span class="close-x" id="closeX">✕</span></h2>
       <div class="inv-sub" style="margin:-6px 0 14px;">${escH(isNew ? hit.symbol+' · '+(INV_TYPES[hit.type]||hit.type)+' · '+hit.exch : pos.name)}</div>
       ${isNew ? `<div class="field"><label>Cuenta donde está</label><select id="ilAcc">${[...ahorro,...others].map(a=>`<option value="${a.id}" ${a.id===target?'selected':''}>${escH(a.name)}</option>`).join('')}</select></div>` : ''}
@@ -5841,6 +5858,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
         }
         const lot = await invMakeLot(p, date, eur, units);
         const txId = invAddTx(p, eur, date, from); if(txId) lot.tx = txId;
+        if(from==='__cash') lot.cash = 1;
         p.lots.push(lot); p.lots.sort((a,b)=>a.date.localeCompare(b.date));
         if(p.closed && invUnits(p)>1e-9) delete p.closed;
         const rep = document.getElementById('ilRep');
@@ -5880,11 +5898,11 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
       <div class="field" style="margin-top:14px;"><label>Cuenta</label><select id="idAcc">${state.accounts.map(a=>`<option value="${a.id}" ${a.id===p.account?'selected':''}>${escH(a.name)}</option>`).join('')}</select></div>
       ${cl ? '' : `<div class="section-title" style="margin:16px 0 6px;">Compra mensual</div>
       ${p.plan && p.plan.on
-        ? `<button class="inv-plan" id="idPlan"><span><b>Día ${p.plan.day} · ${mv(euro(p.plan.eur))}</b><small>${p.plan.from ? 'Desde '+escH(accName(p.plan.from))+' · ' : ''}${invNextPlanDate(p.plan) ? 'Próxima '+fmtDay(invNextPlanDate(p.plan)) : ''}</small></span><span class="inv-arr">›</span></button>`
+        ? `<button class="inv-plan" id="idPlan"><span><b>Día ${p.plan.day} · ${mv(euro(p.plan.eur))}</b><small>${p.plan.from ? 'Desde '+escH(invFromName(p.plan.from, p.account))+' · ' : ''}${invNextPlanDate(p.plan) ? 'Próxima '+fmtDay(invNextPlanDate(p.plan)) : ''}</small></span><span class="inv-arr">›</span></button>`
         : `<button class="btn-ghost" id="idPlan">Programar compra mensual</button>`}`}
       <div class="section-title" style="margin:16px 0 6px;">Operaciones</div>
       ${moves.map(({k,x})=> k==='b'
-        ? `<div class="exp-row inv-lot" data-edit="${x.id}"><div class="exp-name">${fmtDay(x.date)}${x.auto ? ' · mensual' : ''}${x.tx ? ' · '+escH(txAcc(x.tx,'account')) : ''}</div>
+        ? `<div class="exp-row inv-lot" data-edit="${x.id}"><div class="exp-name">${fmtDay(x.date)}${x.auto ? ' · mensual' : ''}${x.tx ? ' · '+escH(txAcc(x.tx,'account')) : x.cash ? ' · efectivo' : ''}</div>
             <div style="display:flex;align-items:center;gap:10px;"><span class="mono" style="font-weight:700;">${mv(euro(x.eur))}</span><span class="inv-sub mono">${mv(fmtU(x.units))}</span><i class="row-del" data-lot="${x.id}" title="Quitar">✕</i></div></div>`
         : `<div class="exp-row inv-lot inv-sale"><div class="exp-name">${fmtDay(x.date)} · venta${x.tx ? ' · '+escH(txAcc(x.tx,'toAccount')) : ''}</div>
             <div style="display:flex;align-items:center;gap:10px;"><span class="mono" style="font-weight:700;">−${mv(euro(x.eur))}</span><span class="inv-sub mono ${posCls(invSaleResult(p,x))}">${mv(euroS(invSaleResult(p,x)))}</span><i class="row-del" data-sale="${x.id}" title="Quitar">✕</i></div></div>`).join('')}
@@ -5923,6 +5941,22 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
       await saveState(); $overlay.classList.remove('show'); showToast('Inversión eliminada'); renderInv();
     };
   }
+  function openInvCash(accId){
+    const acc = state.accounts.find(a=>a.id===accId); if(!acc) return;
+    const cur = invCash(accId);
+    $sheet.innerHTML = `<h2>Efectivo · ${escH(acc.name)} <span class="close-x" id="closeX">✕</span></h2>
+      <div class="field"><label>Lo que hay ahora (€)</label><input type="number" id="icVal" inputmode="decimal" step="0.01" value="${+cur.toFixed(2)}"></div>
+      <div class="auth-err" id="icErr"></div>
+      <button class="btn-primary" id="icSave">Guardar</button>`;
+    $overlay.classList.add('show');
+    document.getElementById('closeX').onclick = ()=> $overlay.classList.remove('show');
+    document.getElementById('icSave').onclick = async ()=>{
+      const v = parseFloat(String(document.getElementById('icVal').value).replace(',','.'));
+      if(!isFinite(v)){ document.getElementById('icErr').textContent = 'Pon una cantidad'; return; }
+      acc.cashAdj = (+acc.cashAdj||0) + (v - invCash(accId));
+      await saveState(); $overlay.classList.remove('show'); showToast('Efectivo ajustado'); renderInv();
+    };
+  }
   function openInvOp(r){
     if(!r) return;
     const p = r.p, g = r.out-r.cost, M = privacyMode, mv = x => M ? '•••' : x, cur = p.cur;
@@ -5945,7 +5979,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
   }
   function openInvSell(p){
     const dest = state.accounts.filter(a=>!a.manual && a.id!==p.account);
-    const def = (dest.find(a=>a.type==='corriente') || {}).id || '';
+    const def = '';
     $sheet.innerHTML = `<h2>Vender <span class="close-x" id="closeX">✕</span></h2>
       <div class="inv-sub" style="margin:-6px 0 14px;">${escH(p.name)}</div>
       <div class="seg" id="isMode"><button data-m="all" class="active">Todo</button><button data-m="part">Una parte</button></div>
@@ -5954,7 +5988,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
         <div class="field"><label>Importe recibido (€)</label><input type="number" id="isEur" inputmode="decimal" step="0.01" min="0" placeholder="Automático"></div>
       </div>
       <div class="field" id="isUnitsW" style="display:none;"><label>Participaciones</label><input type="number" id="isUnits" inputmode="decimal" step="any" min="0" placeholder="${fmtU(invUnits(p))}"></div>
-      <div class="field"><label>Va a</label><select id="isTo"><option value="">Ninguna</option>${dest.map(a=>`<option value="${a.id}" ${a.id===def?'selected':''}>${escH(a.name)}</option>`).join('')}</select></div>
+      <div class="field"><label>Va a</label><select id="isTo"><option value="">Se queda en ${escH(accName(p.account))}</option>${dest.map(a=>`<option value="${a.id}" ${a.id===def?'selected':''}>${escH(a.name)}</option>`).join('')}</select></div>
       <div class="auth-err" id="isErr"></div>
       <button class="btn-primary" id="isSave">Vender</button>`;
     $overlay.classList.add('show');
