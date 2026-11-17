@@ -688,6 +688,8 @@
   .inv-hit b{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .inv-hit small{font-size:11.5px;color:var(--muted);font-weight:600;}
   .inv-hit .am-tag{width:auto;flex-shrink:0;}
+  .inv-hit-add{width:36px;height:36px;flex-shrink:0;display:grid;place-items:center;border:none;border-radius:12px;background:var(--cell-solid, var(--cell));color:var(--ink-soft);cursor:pointer;}
+  .inv-hit-add.on{color:var(--green);background:var(--green-bg);}
   .inv-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px;}
   .inv-stats div{background:var(--bg);border-radius:14px;padding:10px 12px;display:flex;flex-direction:column;gap:3px;min-width:0;}
   .inv-stats span{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);font-weight:700;}
@@ -1530,7 +1532,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
-  const APP_VERSION = '2026.11.17-16';
+  const APP_VERSION = '2026.11.17-17';
   const DEFAULT_STATE = {
     onboarded: false,
     accounts: [
@@ -3289,6 +3291,8 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     hourglass:'<path d="M6 3h12M6 21h12M7 3c0 5 5 6 5 9s-5 4-5 9M17 3c0 5-5 6-5 9s5 4 5 9"/>',
     pencil:'<path d="M4 20l1-4L16 5l3 3L8 19z"/>',
     up:'<path d="M6 15l6-6 6 6"/>',
+    plus:'<path d="M12 5v14M5 12h14"/>',
+    check:'<path d="M5 12.5l4.5 4.5L19 7.5"/>',
     search:'<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/>',
     down:'<path d="M6 9l6 6 6-6"/>',
     keyboard:'<rect x="2.5" y="6" width="19" height="12" rx="3"/><path d="M7 10h.01M10.5 10h.01M14 10h.01M17.5 10h.01M7.5 14h9"/>',
@@ -5789,7 +5793,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
       pts.set(e.pointerId, e);
       if(pts.size===2){ const [p1,p2] = [...pts.values()]; pinch = { d:Math.max(20, Math.abs(p1.clientX-p2.clientX)), a, len:b-a, cx:(p1.clientX+p2.clientX)/2 }; unscrub(); }
       else if(e.pointerType==='mouse'){ drag = { x:e.clientX, a, moved:false }; }
-      else scrub(e.clientX);
+      else if(e.pointerType!=='touch') scrub(e.clientX); // el dedo lo llevan los eventos táctiles de abajo
     });
     body.addEventListener('pointermove', e=>{
       if(pts.has(e.pointerId)) pts.set(e.pointerId, e);
@@ -5800,9 +5804,30 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
         setWin(anchor - fx*nl + (pinch.cx - cx)/r.width*nl, nl); return;
       }
       if(drag && e.buttons){ const di = (drag.x - e.clientX)/r.width*(b-a); if(Math.abs(e.clientX-drag.x)>4) drag.moved = true; if(drag.moved){ unscrub(); setWin(drag.a + di, b-a); return; } }
-      if(e.pointerType==='mouse' || pts.size===1) scrub(e.clientX);
+      if(e.pointerType==='mouse' || (e.pointerType!=='touch' && pts.size===1)) scrub(e.clientX);
     });
-    const up = e=>{ pts.delete(e.pointerId); if(pts.size<2) pinch = null; if(e.pointerType==='mouse') drag = null; else if(!pts.size) unscrub(); };
+    const up = e=>{ pts.delete(e.pointerId); if(pts.size<2) pinch = null; if(e.pointerType==='mouse') drag = null; else if(!pts.size && e.pointerType!=='touch') unscrub(); };
+    // Dedo: mantener pulsado (o deslizar de lado) = ver la cotización de ese día y seguir arrastrando aunque el dedo salga del gráfico.
+    // Deslizar en vertical sigue moviendo la página. Un toque deja marcado ese día.
+    let lp = null, scrubbing = false;
+    body.addEventListener('touchstart', e=>{
+      if(lp) clearTimeout(lp.t);
+      if(e.touches.length!==1){ lp = null; if(scrubbing){ scrubbing = false; unscrub(); } return; }
+      const t = e.touches[0];
+      lp = { x:t.clientX, y:t.clientY, moved:false, t:setTimeout(()=>{ if(lp){ scrubbing = true; scrub(lp.x); try{ navigator.vibrate && navigator.vibrate(6); }catch(_){} } }, 180) };
+    }, { passive:true });
+    body.addEventListener('touchmove', e=>{
+      if(!lp || e.touches.length!==1) return;
+      const t = e.touches[0];
+      if(scrubbing){ e.preventDefault(); scrub(t.clientX); return; }
+      const dx = Math.abs(t.clientX-lp.x), dy = Math.abs(t.clientY-lp.y);
+      if(dx>8 || dy>8){
+        lp.moved = true; clearTimeout(lp.t);
+        if(dx > dy*1.2){ scrubbing = true; e.preventDefault(); scrub(t.clientX); } else lp = null; // vertical: que baje la página
+      }
+    }, { passive:false });
+    const tend = ()=>{ if(lp){ clearTimeout(lp.t); if(!lp.moved && !scrubbing) scrub(lp.x); } lp = null; if(scrubbing){ scrubbing = false; unscrub(); } };
+    body.addEventListener('touchend', tend); body.addEventListener('touchcancel', tend);
     body.addEventListener('pointerup', up); body.addEventListener('pointercancel', up);
     body.addEventListener('pointerleave', e=>{ if(e.pointerType==='mouse'){ drag = null; unscrub(); } });
     body.addEventListener('wheel', e=>{ if(!e.ctrlKey) return; e.preventDefault(); const r = body.getBoundingClientRect(); zoom((e.clientX-r.left)/r.width, e.deltaY>0 ? 1.15 : 1/1.15); }, { passive:false });
@@ -5843,7 +5868,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
       <div class="inv-stats"><div><span>Precio</span><b class="mono">${q ? fmtPx(q.price, q.cur) : '—'}</b></div><div><span>Hoy</span><b class="mono ${posCls(ch)}">${pctS(ch)}</b></div></div>
       ${saved ? `<div class="field" style="margin-top:14px;"><label>Nombre</label><input type="text" id="wName" value="${escH(w.name)}" maxlength="60"></div>` : ''}
       ${saved ? invAlertsHtml({ symbol:w.symbol }) : ''}
-      ${saved ? '' : '<button class="btn-primary" id="wAdd" style="margin-top:14px;">Añadir a favoritos</button>'}
+      ${saved ? '' : `<button class="btn-primary" id="wAdd" style="margin-top:14px;">+ Añadir a favoritos</button>`}
       ${w.type!=='INDEX' ? '<button class="btn-ghost" id="wBuy" style="margin-top:8px;">Comprar</button>' : ''}
       ${saved ? '<button class="btn-secondary" id="wDel" style="margin-top:8px;">Quitar de favoritos</button>' : ''}`;
     $overlay.classList.add('show');
@@ -6110,8 +6135,18 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
       openWatch(hit.symbol, hit);
     };
     const show = (items, title)=>{
-      res.innerHTML = (title ? `<div class="section-title" style="margin:4px 2px 2px;">${title}</div>` : '') + (items.length ? items.map((x,i)=>`<button class="inv-hit" data-i="${i}"><span><b>${escH(x.name)}</b><small>${escH(x.symbol)} · ${escH(x.exch)}</small></span><span class="am-tag">${INV_TYPES[x.type]||x.type}</span></button>`).join('') : '<div class="empty-note">Sin resultados.</div>');
-      res.querySelectorAll('.inv-hit').forEach(b=> b.onclick = ()=> pick(items[+b.dataset.i]));
+      const isFav = x => invWatch().some(w=>w.symbol===x.symbol);
+      res.innerHTML = (title ? `<div class="section-title" style="margin:4px 2px 2px;">${title}</div>` : '') + (items.length ? items.map((x,i)=>`<div class="inv-hit" data-i="${i}"><span><b>${escH(x.name)}</b><small>${escH(x.symbol)} · ${escH(x.exch)} · ${INV_TYPES[x.type]||x.type}</small></span>${fav ? `<button class="inv-hit-add ${isFav(x)?'on':''}" data-add="${i}" aria-label="Añadir a favoritos">${ico(isFav(x)?'check':'plus',18)}</button>` : `<span class="am-tag">${INV_TYPES[x.type]||x.type}</span>`}</div>`).join('') : '<div class="empty-note">Sin resultados.</div>');
+      res.querySelectorAll('.inv-hit').forEach(b=> b.onclick = async e=>{
+        const hit = items[+b.dataset.i], ab = e.target.closest('.inv-hit-add');
+        if(!ab){ pick(hit); return; }
+        if(isFav(hit)){ openWatch(hit.symbol); return; }
+        ab.classList.add('on'); ab.innerHTML = ico('check',18);
+        let cur = '';
+        try{ const qd = await invCall({ op:'quotes', symbols:[hit.symbol] }); const qq = qd.quotes && qd.quotes[hit.symbol]; if(qq){ invQ[hit.symbol] = qq; cur = qq.cur || ''; } }catch(_){}
+        invWatch().push({ symbol:hit.symbol, name:hit.name, type:hit.type, exch:hit.exch, cur });
+        await saveState(); showToast('Añadido a favoritos'); renderInv();
+      });
     };
     const sug = ()=>{ const l = INV_SUGERIDOS.filter(x=>!invWatch().some(w=>w.symbol===x.symbol)); if(fav && l.length) show(l, 'Sugeridos'); else res.innerHTML = ''; };
     q.oninput = ()=>{
