@@ -10,6 +10,7 @@ PWA de finanzas personales de Adri, en castellano. Un solo `index.html` (JS puro
 - Enseñar capturas antes de subir iconos o diseños nuevos.
 - El repo es público: nunca claves privadas en el repo ni en el chat. En los SQL los secretos van como `<SECRETO>`.
 - SQL para Supabase: darlo en bloque listo para copiar y pegar en el SQL Editor, probado antes en un Postgres 16 local con stubs.
+- **Regla de Adri: nunca tocar el pasado para cuadrar.** No cambiar el saldo inicial / "Punto de partida" de ninguna cuenta ni editar movimientos antiguos para que un saldo coincida con el banco. Si algo no cuadra, buscar el movimiento real que falta o está mal (comparando con los extractos) y añadirlo o corregirlo. Cualquier cambio a datos existentes, preguntarlo antes y explicarlo claro, no en un comentario del SQL. (El 24 nov 2026 un SQL ajustó el saldo inicial de BBVA y Ticket sin explicarlo; Adri decidió dejarlo así.)
 
 ## Estilo visual
 
