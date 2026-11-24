@@ -1536,7 +1536,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
-  const APP_VERSION = '2026.11.24-2';
+  const APP_VERSION = '2026.11.24-3';
   const DEFAULT_STATE = {
     onboarded: false,
     accounts: [
@@ -5737,6 +5737,12 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
       });
       return { d, v, i, px };
     });
+    // Primer punto: el momento de la compra, a precio de compra (luego, el cierre de ese día)
+    if(out.length && out[0].d===first){
+      let v0 = 0; const px0 = {};
+      ps.forEach(p=> p.lots.filter(l=>l.date===first).forEach(l=>{ v0 += +l.eur||0; if(l.price) px0[p.symbol] = { p:+l.price, c:p.cur }; }));
+      out.unshift({ d:first, v:v0, i:v0, px:px0, buy:true });
+    }
     if(!allClosed){
       const px = {}; ps.forEach(p=>{ if(!p.closed && invQ[p.symbol]) px[p.symbol] = { p:invQ[p.symbol].price, c:p.cur }; });
       out.push({ d:today, v:ps.reduce((s,p)=>s+invValue(p),0), i:ps.reduce((s,p)=>s+invPaid(p)-invSold(p),0), px });
@@ -5783,7 +5789,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
         <div class="inv-lbl-s"><span class="inv-chip ${posCls(ch)}">${pctS(ch)}</span><span>${fmtDay(b.d)}</span></div>`;
     }
     const perf = b.v - a.v - (b.i - a.i), base = a.v + (b.i - a.i);
-    const head = fmtDay(b.d) + (b.d===todayStr() ? '' : '');
+    const head = fmtDay(b.d) + (b.buy ? ' · compra' : '');
     const pxs = b.px ? Object.entries(b.px).slice(0,3).map(([s,x])=>`<span class="inv-px">${escH(s)} ${fmtPx(x.p, x.c)}</span>`).join('') : '';
     return `<div class="inv-lbl-v mono">${masked ? MASK : euro(b.v)}</div>
       <div class="inv-lbl-s"><span class="inv-chip ${posCls(perf)}">${masked ? '•••' : euroS(perf)} · ${pctS(base ? perf/base : 0)}</span><span>${head}</span><span class="inv-lbl-i">${ilbl||'Aportado'} ${masked ? '•••' : euro(b.i)}</span></div>
