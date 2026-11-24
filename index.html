@@ -766,6 +766,10 @@
   .inv-sel .inv-sel-all{border-style:dashed;}
   .inv-sel button{border:1px solid var(--line);background:none;font:inherit;font-size:12.5px;font-weight:700;color:var(--muted);padding:6px 12px;border-radius:999px;cursor:pointer;}
   .inv-sel button.on{background:var(--ink);color:var(--on-ink, #fff);border-color:var(--ink);}
+  .inv-acc-cell{cursor:pointer;}
+  .inv-acc-cell .inv-arr{color:var(--muted);font-weight:700;}
+  .inv-acc-s{font-size:11.5px;font-weight:700;color:var(--muted);margin-top:2px;}
+  .inv-acc-s .pos{color:var(--green);} .inv-acc-s .neg{color:var(--red);}
   .inv-closed-link{border:none;background:none;font:inherit;color:var(--muted);text-decoration:underline;cursor:pointer;padding:0;}
   .inv-lot{cursor:pointer;}
   .inv-plan{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;text-align:left;border:none;background:var(--bg);border-radius:14px;padding:12px 14px;font-family:inherit;color:var(--ink);cursor:pointer;}
@@ -1532,7 +1536,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
-  const APP_VERSION = '2026.11.17-17';
+  const APP_VERSION = '2026.11.24-1';
   const DEFAULT_STATE = {
     onboarded: false,
     accounts: [
@@ -2295,9 +2299,19 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
       }
       return `<div class="acc-cell">
         <div class="ac-name">${a.name}</div>
-        <div class="ac-val">${euro(currentBalance(a.id))}</div>
+        <div class="ac-val">${euro(invHasAcc(a.id) ? invCash(a.id) : currentBalance(a.id))}</div>
       </div>`;
     }
+    // las cuentas de bróker enseñan solo su efectivo; lo invertido va en su propia casilla (el total sí lo suma todo, una vez)
+    const invCellHtml = masked => {
+      if(!invList().length) return '';
+      const t = invTotals();
+      return `<div class="acc-cell inv-acc-cell" id="invCell">
+        <div class="ac-name">Inversiones <span class="inv-arr">›</span></div>
+        <div class="ac-val ${masked?'masked-val':''}">${masked ? MASK : euro(t.value)}</div>
+        <div class="inv-acc-s"><span class="${posCls(t.day)}">hoy ${pctS(t.dayPct)}</span></div>
+      </div>`;
+    };
 
     const nominaHistoric = historicNominaPeriods();
     const nominaForecast = forecastNominaPeriods();
@@ -2315,9 +2329,9 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
       <div class="acc-grid">${corrientes.map(a=>accCellHtml(a,false)).join('')}</div>
       </div><div>
       <div class="group-head"><span class="g-lbl">Ahorro</span><span class="g-val ${privacyMode?'masked-val':''}">${privacyMode ? MASK : euro(totalAhorro)}</span></div>
-      <div class="acc-grid">${ahorros.map(a=>accCellHtml(a,privacyMode)).join('')}</div>
+      <div class="acc-grid">${ahorros.map(a=>accCellHtml(a,privacyMode)).join('')}${invCellHtml(privacyMode)}</div>
       </div></div>
-      ${invResumenCard()}
+      ${invList().length ? '' : invResumenCard()}
       <div style="height:8px;"></div>
       <div class="res-charts">
       ${buildCategoryGroupChart(nominaHistoric)}
@@ -2331,7 +2345,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
       privacyMode = !privacyMode;
       renderResumen();
     };
-    { const ic = document.getElementById('invCard'); if(ic) ic.onclick = ()=>{ activeTab = 'inv'; render(); window.scrollTo(0,0); }; }
+    $app.querySelectorAll('#invCard, #invCell').forEach(ic=> ic.onclick = ()=>{ activeTab = 'inv'; render(); window.scrollTo(0,0); });
     invKick();
 
     const chartInfoRegistry = {
