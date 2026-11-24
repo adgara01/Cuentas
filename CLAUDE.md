@@ -60,6 +60,10 @@ Iconos de línea grises, sin emojis; sin textos explicativos tipo IA; esquinas c
 - Con una hoja abierta el fondo no se mueve (`body.sheet-lock`, MutationObserver sobre `#overlay`).
 - Caché en el móvil: `cuentas-inv-q` (cotizaciones) y `cuentas-inv-h-<símbolo>|<intervalo>` (históricos, 6 h). Se refresca al abrir Resumen/Inversiones y cada minuto.
 
+## Resumen: gráfico de patrimonio
+
+- El antiguo "Evolución del ahorro — Trade Rep." es ahora **Evolución del patrimonio** (`buildSavingsEvolutionChart` + `patrimonioAt(fecha)`): suma de las cuentas a esa fecha (manuales con su valor de ahora), efectivo de los brókeres (`invCashAt`) e inversiones (`invValueAt`: a su precio de ese día con `patSeries` = `invSeries(invList())`, que se carga en segundo plano; mientras, a lo invertido). Hoy coincide con el patrimonio total. "Previsto" parte del patrimonio justo antes del primer periodo y suma el ahorro previsto de cada mes (`goalAmountForMonth`).
+
 ## Si cambia de iPhone, se le rompe o lo pierde
 
 Los datos están en Supabase: no se pierde nada. En el iPhone nuevo:

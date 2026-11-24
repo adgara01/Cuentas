@@ -1536,7 +1536,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
-  const APP_VERSION = '2026.11.24-1';
+  const APP_VERSION = '2026.11.24-2';
   const DEFAULT_STATE = {
     onboarded: false,
     accounts: [
@@ -2360,6 +2360,15 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
       };
     });
     wireSavingsChartInteractivity();
+    // con el histórico de precios, las inversiones del gráfico de patrimonio pasan a su valor de cada mes
+    if(invList().some(p=>p.lots.length) && Date.now()-patSeriesAt > 300000){
+      patSeriesAt = Date.now();
+      invSeries(invList()).then(sr=>{
+        patSeries = sr;
+        const w = document.getElementById('savingsWrap');
+        if(activeTab==='resumen' && w){ w.outerHTML = buildSavingsEvolutionChart(forecastNominaPeriods()); wireSavingsChartInteractivity(); }
+      }).catch(()=>{ patSeriesAt = 0; });
+    }
     wireStackedChartClicks();
 
     $app.querySelectorAll('.ac-val-input').forEach(inp=>{
@@ -3107,18 +3116,43 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     for(let i=0;i<count;i++) ticks.push(minV + step*i);
     return ticks;
   }
+  // Patrimonio en una fecha: cuentas (saldo a esa fecha; las manuales con su valor de ahora), efectivo de los brókeres e inversiones.
+  // Las inversiones van a su precio de ese día cuando el histórico ya está cargado (patSeries); si no, a lo invertido.
+  let patSeries = null, patSeriesAt = 0;
+  function invCashAt(accId, date){
+    const acc = state.accounts.find(a=>a.id===accId); if(!acc) return 0;
+    let c = ledgerBalanceAsOfDate(accId, date) + (+acc.cashAdj||0);
+    invOf(accId).forEach(p=>{ p.lots.forEach(l=>{ if((l.tx || l.cash) && l.date<=date) c -= +l.eur||0; }); invSales(p).forEach(x=>{ if(x.date<=date) c += +x.eur||0; }); });
+    return c;
+  }
+  function invValueAt(date){
+    if(date >= todayStr()) return invTotals().value;
+    if(patSeries && patSeries.length){ let v = 0; for(const x of patSeries){ if(x.d<=date) v = x.v; else break; } return v; }
+    return invList().reduce((s,p)=> s + sumF(p.lots.filter(l=>l.date<=date),'eur') - sumF(invSales(p).filter(x=>x.date<=date),'eur'), 0);
+  }
+  function patrimonioAt(date){
+    let s = 0;
+    state.accounts.forEach(a=>{
+      if(invHasAcc(a.id)) s += invCashAt(a.id, date);
+      else if(a.manual) s += +a.manualBalance||0;
+      else s += ledgerBalanceAsOfDate(a.id, date);
+    });
+    return s + invValueAt(date);
+  }
   function buildSavingsEvolutionChart(months){
-    const accRem = state.accounts.find(a=>a.id==='remunerada') || state.accounts.find(a=>a.type==='ahorro' && !a.manual);
-    if(!accRem || !months.length){ lastSavingsChart = null; return ''; }
-    // "previsto": la nómina de un periodo se cobra el día 1 de ESE MISMO periodo (el día de cobro de Ajustes),
-    // así que su aportación ya cuenta desde el principio del propio periodo, sin retraso.
-    let cum = accRem.initial;
+    if(!months.length){ lastSavingsChart = null; return ''; }
+    const accRem = { name:'patrimonio' };
+    // "previsto": desde el patrimonio justo antes del primer periodo, sumando lo que se prevé ahorrar cada mes
+    // (la nómina de un periodo se cobra el día 1 de ESE MISMO periodo, así que cuenta desde su principio).
+    const p0 = nominaPeriodForLabelMonth(months[0], state.paydayDay||1).start;
+    const before = (()=>{ const x = new Date(p0+'T12:00:00'); x.setDate(x.getDate()-1); return isoDate(x); })();
+    let cum = patrimonioAt(before);
     const planned = months.map(m=>{ cum += goalAmountForMonth(m); return cum; });
     const todayM = nominaCurrentLabelMonth();
     const real = months.map(m=>{
       if(m > todayM) return null;
-      if(m === todayM) return ledgerBalanceAsOfDate(accRem.id, todayStr());
-      return ledgerBalanceAsOfDate(accRem.id, nominaPeriodForLabelMonth(m, state.paydayDay||1).end);
+      if(m === todayM) return patrimonioAt(todayStr());
+      return patrimonioAt(nominaPeriodForLabelMonth(m, state.paydayDay||1).end);
     });
     const allVals = planned.concat(real.filter(v=>v!=null));
     if(!allVals.length){ lastSavingsChart = null; return ''; }
@@ -3152,8 +3186,8 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
 
     lastSavingsChart = { months, planned, real, minV, maxV, W, H, padL, padR, padT, padB, xStep, accRem };
 
-    return `<div class="chart-wrap" style="margin-top:12px;">
-      <div class="chart-title">Evolución del ahorro — ${accRem.name} <span style="font-weight:400;text-transform:none;letter-spacing:0;">(toca o arrastra)</span></div>
+    return `<div class="chart-wrap" style="margin-top:12px;" id="savingsWrap">
+      <div class="chart-title">Evolución del patrimonio <span style="font-weight:400;text-transform:none;letter-spacing:0;">(toca o arrastra)</span></div>
       <div class="chart-subtitle">Cada mes es justo después de cobrar la nómina de ese mes.</div>
       <div style="overflow-x:auto;position:relative;" id="savingsScrollWrap">
         <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;" id="savingsSvg">
