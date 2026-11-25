@@ -1536,7 +1536,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
-  const APP_VERSION = '2026.11.24-3';
+  const APP_VERSION = '2026.11.25-1';
   const DEFAULT_STATE = {
     onboarded: false,
     accounts: [
@@ -2081,7 +2081,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     $tabbarWrap.querySelectorAll('.side-brand,.side-foot,.fab-add,.side-create').forEach(e=>e.remove());
     const desktop = window.innerWidth>=1000;
     let tabs;
-    if(desktop) tabs = [['resumen','Resumen'],['dashboard','Dashboard'],['anual','Año'],['movs','Movimientos'],['pend','Pendientes'],['inv','Inversiones'],['ajustes','Objetivos y ajustes']];
+    if(desktop) tabs = [['resumen','Resumen'],['dashboard','Dashboard'],['inv','Inversiones'],['anual','Año'],['movs','Movimientos'],['pend','Pendientes'],['ajustes','Objetivos y ajustes']];
     else tabs = [['resumen','Resumen'],['dashboard','Dashboard'],['anual','Año'],['ajustes','Objetivos y<br>ajustes']];
     if(desktop){
       const brand = document.createElement('div'); brand.className = 'side-brand';
@@ -5394,9 +5394,9 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
   }
 
   // ================= ATAJOS DE TECLADO (solo ordenador) =================
-  const SHORTCUT_TABS = ['resumen','dashboard','anual','movs','pend','inv','ajustes'];
+  const SHORTCUT_TABS = ['resumen','dashboard','inv','anual','movs','pend','ajustes'];
   function showShortcuts(){
-    const rows = [['1 – 7','Resumen, Dashboard, Año, Movimientos, Pendientes, Inversiones, Ajustes'],['N','Nuevo movimiento'],['/','Buscar en Movimientos'],['← →','Año anterior / siguiente (en Año)'],['Intro','Añadir movimiento (en el formulario)'],['Esc','Cerrar ventana'],['?','Esta ayuda']];
+    const rows = [['1 – 7','Resumen, Dashboard, Inversiones, Año, Movimientos, Pendientes, Ajustes'],['N','Nuevo movimiento'],['/','Buscar en Movimientos'],['← →','Año anterior / siguiente (en Año)'],['Intro','Añadir movimiento (en el formulario)'],['Esc','Cerrar ventana'],['?','Esta ayuda']];
     $sheet.innerHTML = `<h2>Atajos de teclado <span class="close-x" id="closeX">✕</span></h2>
       <table class="kbd-table">${rows.map(r=>`<tr><td><kbd class="kk">${r[0]}</kbd></td><td>${r[1]}</td></tr>`).join('')}</table>`;
     $overlay.classList.add('show');
