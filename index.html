@@ -676,6 +676,8 @@
   .inv-rng button{border:none;background:none;font:inherit;font-size:12px;font-weight:700;color:var(--muted);padding:6px 9px;border-radius:9px;cursor:pointer;}
   .inv-rng button.on{background:var(--cell-solid, var(--cell));color:var(--ink);box-shadow:0 1px 4px rgba(20,20,25,.1);}
   .inv-chart-body{position:relative;min-height:150px;}
+  @media (hover:hover) and (pointer:fine){ .inv-chart-body{cursor:crosshair;} }
+  .inv-lbl-arrow{color:var(--muted);font-weight:500;margin:0 4px;}
   .inv-svg{display:block;width:100%;height:170px;cursor:crosshair;user-select:none;-webkit-user-select:none;}
   .inv-ticks{display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted);font-weight:600;margin-top:4px;}
   .inv-dot{position:absolute;width:10px;height:10px;border-radius:50%;transform:translate(-50%,-50%);box-shadow:0 0 0 3px var(--cell-solid, var(--cell));pointer-events:none;}
@@ -1536,7 +1538,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
-  const APP_VERSION = '2026.11.25-1';
+  const APP_VERSION = '2026.11.27-1';
   const DEFAULT_STATE = {
     onboarded: false,
     accounts: [
@@ -5775,7 +5777,9 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
       <path d="${area}" fill="url(#ig-${key})"/>
       <path d="${inv}" fill="none" stroke="var(--muted)" stroke-width="1.4" stroke-dasharray="4 4" vector-effect="non-scaling-stroke"/>
       <path d="${line}" fill="none" stroke="${col}" stroke-width="2.2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+      <rect class="inv-band" x="0" y="${T}" width="0" height="${H-B-T}" style="display:none;fill:var(--ink-soft);fill-opacity:.09"/>
       <line class="inv-cur" x1="0" x2="0" y1="${T}" y2="${H-B}" stroke="var(--ink-soft)" stroke-width="1" vector-effect="non-scaling-stroke" style="display:none"/>
+      <line class="inv-cur2" x1="0" x2="0" y1="${T}" y2="${H-B}" stroke="var(--ink-soft)" stroke-width="1" vector-effect="non-scaling-stroke" style="display:none"/>
       <rect x="0" y="0" width="${W}" height="${H}" fill="transparent"/>
     </svg>
     <div class="inv-ticks">${ticks.map(i=>`<span>${fmtDay(series[i].d)}</span>`).join('')}</div>
@@ -5795,6 +5799,24 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
       <div class="inv-lbl-s"><span class="inv-chip ${posCls(perf)}">${masked ? '•••' : euroS(perf)} · ${pctS(base ? perf/base : 0)}</span><span>${head}</span><span class="inv-lbl-i">${ilbl||'Aportado'} ${masked ? '•••' : euro(b.i)}</span></div>
       ${pxs ? `<div class="inv-lbl-s inv-lbl-px">${pxs}</div>` : ''}`;
   }
+  // Etiqueta de una zona seleccionada (de i a j): cuánto ha cambiado entre esos dos días
+  function invRangeLabel(series, i, j, masked, ilbl){
+    const a = series[i], b = series[j], days = Math.round((Date.parse(b.d)-Date.parse(a.d))/864e5);
+    const when = `<span>${fmtDay(a.d)} – ${fmtDay(b.d)}</span><span class="inv-lbl-i">${days} ${days===1?'día':'días'}</span>`;
+    const arrow = '<span class="inv-lbl-arrow">→</span>';
+    if(b.i==null){
+      const ch = a.v ? b.v/a.v-1 : 0;
+      return `<div class="inv-lbl-v mono">${fmtPx(a.v, a.c)}${arrow}${fmtPx(b.v, b.c)}</div>
+        <div class="inv-lbl-s"><span class="inv-chip ${posCls(ch)}">${euroOrPx(b.v-a.v, b.c)} · ${pctS(ch)}</span>${when}</div>`;
+    }
+    const put = b.i - a.i, perf = b.v - a.v - put, base = a.v + Math.max(0, put);
+    const pxs = a.px && b.px ? Object.keys(b.px).filter(k=>a.px[k] && a.px[k].p).slice(0,3).map(k=>{ const ch = b.px[k].p/a.px[k].p-1; return `<span class="inv-px">${escH(k)} <span class="${posCls(ch)}">${pctS(ch)}</span></span>`; }).join('') : '';
+    const M = v => masked ? MASK : euro(v);
+    return `<div class="inv-lbl-v mono">${M(a.v)}${arrow}${M(b.v)}</div>
+      <div class="inv-lbl-s"><span class="inv-chip ${posCls(perf)}">${masked ? '•••' : euroS(perf)} · ${pctS(base ? perf/base : 0)}</span>${when}${Math.abs(put)>0.005 ? `<span class="inv-lbl-i">${put>0?(ilbl||'Aportado'):'Sacado'} ${masked ? '•••' : euro(Math.abs(put))}</span>` : ''}</div>
+      ${pxs ? `<div class="inv-lbl-s inv-lbl-px">${pxs}</div>` : ''}`;
+  }
+  const euroOrPx = (n, c) => (n>=0?'+':'−') + fmtPx(Math.abs(n), c);
   function invChartBox(key, ranges, cur, ilbl){
     ranges = ranges || INV_RANGES.map(r=>r[0]); cur = cur || invRange;
     return `<div class="inv-chart" id="invBox-${key}" data-rk="${cur}" data-ilbl="${ilbl||''}">
@@ -5810,7 +5832,8 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     let all = null, a = 0, b = 0;
     const vis = ()=> all.slice(a, b+1);
     const showEnd = ()=>{ const s = vis(); lbl.innerHTML = invChartLabel(s, s.length-1, masked, il); };
-    const draw = ()=>{ body.innerHTML = invChartHtml(vis(), key); showEnd(); };
+    let sel = null; // zona seleccionada con el ratón: { i0, i1, x, on (arrastrando), pinned }
+    const draw = ()=>{ sel = null; body.innerHTML = invChartHtml(vis(), key); showEnd(); };
     const setRange = rk => {
       a = 0; b = all.length-1;
       const r = INV_RANGES.find(x=>x[0]===rk), n = r ? r[1] : 0;
@@ -5831,6 +5854,20 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     setRange(box.dataset.rk); draw();
 
     const pts = new Map(); let pinch = null, drag = null;
+    const idxAt = clientX => { const svg = body.querySelector('.inv-svg'); if(!svg) return 0; const r = svg.getBoundingClientRect(), n = vis().length-1; return Math.round(Math.min(Math.max(clientX - r.left, 0), r.width)/r.width*n); };
+    const pxOf = (i, n, vb) => 4 + i*(vb.width-8)/Math.max(1,n);
+    const showSel = ()=>{
+      const svg = body.querySelector('.inv-svg'); if(!svg || !sel) return;
+      const s = vis(), vb = svg.viewBox.baseVal, i = Math.min(sel.i0, sel.i1), j = Math.max(sel.i0, sel.i1);
+      const band = body.querySelector('.inv-band'), c1 = body.querySelector('.inv-cur'), c2 = body.querySelector('.inv-cur2'), dot = body.querySelector('.inv-dot');
+      const x1 = pxOf(i, s.length-1, vb), x2 = pxOf(j, s.length-1, vb);
+      band.setAttribute('x', x1); band.setAttribute('width', Math.max(0, x2-x1)); band.style.display = '';
+      c1.setAttribute('x1', x1); c1.setAttribute('x2', x1); c1.style.display = '';
+      c2.setAttribute('x1', x2); c2.setAttribute('x2', x2); c2.style.display = '';
+      if(dot) dot.style.display = 'none';
+      lbl.innerHTML = invRangeLabel(s, i, j, masked, il);
+    };
+    const clearSel = ()=>{ sel = null; ['.inv-band','.inv-cur2'].forEach(q=>{ const el = body.querySelector(q); if(el) el.style.display = 'none'; }); };
     const scrub = clientX => {
       const svg = body.querySelector('.inv-svg'), cur = body.querySelector('.inv-cur'), dot = body.querySelector('.inv-dot'); if(!svg) return;
       const s = vis(), r = svg.getBoundingClientRect(), x = Math.min(Math.max(clientX - r.left, 0), r.width);
@@ -5841,12 +5878,17 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
       dot.style.display = ''; dot.style.left = (px/vb.width*r.width)+'px'; dot.style.top = (py/vb.height*r.height)+'px';
       lbl.innerHTML = invChartLabel(s, i, masked, il);
     };
-    const unscrub = ()=>{ const cur = body.querySelector('.inv-cur'), dot = body.querySelector('.inv-dot'); if(cur) cur.style.display = 'none'; if(dot) dot.style.display = 'none'; showEnd(); };
+    const unscrub = ()=>{ if(sel && sel.pinned) return; const cur = body.querySelector('.inv-cur'), dot = body.querySelector('.inv-dot'); if(cur) cur.style.display = 'none'; if(dot) dot.style.display = 'none'; showEnd(); };
     body.style.touchAction = 'pan-y';
     body.addEventListener('pointerdown', e=>{
       pts.set(e.pointerId, e);
       if(pts.size===2){ const [p1,p2] = [...pts.values()]; pinch = { d:Math.max(20, Math.abs(p1.clientX-p2.clientX)), a, len:b-a, cx:(p1.clientX+p2.clientX)/2 }; unscrub(); }
-      else if(e.pointerType==='mouse'){ drag = { x:e.clientX, a, moved:false }; }
+      else if(e.pointerType==='mouse'){
+        if(e.button!==0) return;
+        try{ body.setPointerCapture(e.pointerId); }catch(_){}
+        if(e.shiftKey){ clearSel(); drag = { x:e.clientX, a, moved:false }; } // mayúsculas + arrastrar = mover
+        else { clearSel(); const i = idxAt(e.clientX); sel = { i0:i, i1:i, x:e.clientX, on:true, pinned:false }; } // arrastrar = seleccionar una zona
+      }
       else if(e.pointerType!=='touch') scrub(e.clientX); // el dedo lo llevan los eventos táctiles de abajo
     });
     body.addEventListener('pointermove', e=>{
@@ -5857,10 +5899,14 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
         const fx = (pinch.cx - r.left)/r.width, nl = pinch.len*pinch.d/d, anchor = pinch.a + fx*pinch.len;
         setWin(anchor - fx*nl + (pinch.cx - cx)/r.width*nl, nl); return;
       }
+      if(sel && sel.on && e.buttons){ if(Math.abs(e.clientX-sel.x)>4 || sel.i1!==sel.i0){ sel.i1 = idxAt(e.clientX); showSel(); } return; }
+      if(sel && sel.pinned) return;
       if(drag && e.buttons){ const di = (drag.x - e.clientX)/r.width*(b-a); if(Math.abs(e.clientX-drag.x)>4) drag.moved = true; if(drag.moved){ unscrub(); setWin(drag.a + di, b-a); return; } }
       if(e.pointerType==='mouse' || (e.pointerType!=='touch' && pts.size===1)) scrub(e.clientX);
     });
-    const up = e=>{ pts.delete(e.pointerId); if(pts.size<2) pinch = null; if(e.pointerType==='mouse') drag = null; else if(!pts.size && e.pointerType!=='touch') unscrub(); };
+    const up = e=>{ pts.delete(e.pointerId); if(pts.size<2) pinch = null;
+      if(e.pointerType==='mouse' && sel && sel.on){ sel.on = false; if(sel.i0===sel.i1){ clearSel(); scrub(e.clientX); } else { sel.pinned = true; showSel(); } }
+      if(e.pointerType==='mouse') drag = null; else if(!pts.size && e.pointerType!=='touch') unscrub(); };
     // Dedo: mantener pulsado (o deslizar de lado) = ver la cotización de ese día y seguir arrastrando aunque el dedo salga del gráfico.
     // Deslizar en vertical sigue moviendo la página. Un toque deja marcado ese día.
     let lp = null, scrubbing = false;
@@ -5884,8 +5930,12 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
     body.addEventListener('touchend', tend); body.addEventListener('touchcancel', tend);
     body.addEventListener('pointerup', up); body.addEventListener('pointercancel', up);
     body.addEventListener('pointerleave', e=>{ if(e.pointerType==='mouse'){ drag = null; unscrub(); } });
-    body.addEventListener('wheel', e=>{ if(!e.ctrlKey) return; e.preventDefault(); const r = body.getBoundingClientRect(); zoom((e.clientX-r.left)/r.width, e.deltaY>0 ? 1.15 : 1/1.15); }, { passive:false });
+    body.addEventListener('wheel', e=>{
+      const r = body.getBoundingClientRect();
+      if(!e.ctrlKey){ if(Math.abs(e.deltaX) > Math.abs(e.deltaY) && Math.abs(e.deltaX)>1){ e.preventDefault(); clearSel(); setWin(a + e.deltaX/r.width*(b-a), b-a); } return; } // deslizar de lado (trackpad) = mover
+      e.preventDefault(); zoom((e.clientX-r.left)/r.width, e.deltaY>0 ? 1.15 : 1/1.15); }, { passive:false });
     body.addEventListener('dblclick', ()=>{ setRange('Todo'); draw(); });
+    document.addEventListener('keydown', function esc(e){ if(!document.body.contains(body)){ document.removeEventListener('keydown', esc); return; } if(e.key==='Escape' && sel && sel.pinned){ clearSel(); unscrub(); } });
   }
   function invDonutHtml(items){
     const tot = items.reduce((s,x)=>s+x.v,0); if(!tot) return '';
