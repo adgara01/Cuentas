@@ -780,7 +780,10 @@
   @media (min-width:1000px){
     .inv-cols.two{display:grid;grid-template-columns:1.4fr 1fr;gap:0 22px;align-items:start;}
     .inv-svg{height:240px;}
+    .overlay .sheet:has(.inv-chart){max-width:900px;width:min(900px, 92vw);}
+    .sheet .inv-chart .inv-svg{height:360px;}
   }
+  @media (max-width:999px){ .sheet .inv-chart .inv-svg{height:230px;} }
 
   /* ---------- año + modo ordenador ---------- */
   .anual-from{font-size:12.5px;font-weight:700;color:var(--ink-soft);display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center;}
@@ -1538,7 +1541,7 @@ html[data-design="vault"] .total-cell .t-val::after{content:none;}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
-  const APP_VERSION = '2026.11.27-1';
+  const APP_VERSION = '2026.11.27-2';
   const DEFAULT_STATE = {
     onboarded: false,
     accounts: [
